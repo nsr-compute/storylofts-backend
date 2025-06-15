@@ -1,0 +1,60 @@
+# .env.example - StoryLofts ContentHive API Environment Variables Template
+# Copy this file to .env and fill in your actual values
+
+# =============================================================================
+# SERVER CONFIGURATION
+# =============================================================================
+NODE_ENV=development
+PORT=3000
+
+# API URLs
+API_BASE_URL=http://localhost:3000
+FRONTEND_URL=http://localhost:3001
+
+# =============================================================================
+# GOOGLE SECRET MANAGER CONFIGURATION
+# =============================================================================
+# Set to 'true' to use Google Secret Manager for sensitive values
+USE_GOOGLE_SECRET_MANAGER=false
+GOOGLE_CLOUD_PROJECT_ID=storylofts-secrets
+
+# Path to Google Cloud service account JSON file (for local development)
+# GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+
+# Or JSON content directly (for production/CI)
+# GOOGLE_APPLICATION_CREDENTIALS_JSON={"type": "service_account", ...}
+
+# =============================================================================
+# AUTH0 CONFIGURATION
+# =============================================================================
+# These can be loaded from Google Secret Manager or set directly
+AUTH0_DOMAIN=your-domain.auth0.com
+AUTH0_AUDIENCE=https://your-api-identifier
+
+# =============================================================================
+# BACKBLAZE B2 CONFIGURATION
+# =============================================================================
+# These can be loaded from Google Secret Manager or set directly
+B2_APPLICATION_KEY_ID=your_key_id
+B2_APPLICATION_KEY=your_application_key
+B2_BUCKET_ID=your_bucket_id
+B2_BUCKET_NAME=your_bucket_name
+
+# =============================================================================
+# UPLOAD CONFIGURATION
+# =============================================================================
+# Maximum file size in bytes (default: 5GB)
+MAX_FILE_SIZE=5368709120
+
+# Allowed file formats (comma-separated)
+ALLOWED_VIDEO_FORMATS=mp4,mov,avi,mkv,webm
+ALLOWED_IMAGE_FORMATS=jpg,jpeg,png,webp
+
+# =============================================================================
+# DEVELOPMENT SETTINGS
+# =============================================================================
+# Additional CORS origins for development
+DEV_CORS_ORIGINS=http://localhost:3001,http://127.0.0.1:3001
+
+# Enable debug logging
+DEBUG=storylofts:*
