@@ -11,14 +11,19 @@ const client = jwksClient({
   timeout: 30000
 });
 
-// Get signing key from JWKS
-function getKey(header: any, callback: any) {
-  client.getSigningKey(header.kid, (err, key) => {
-    if (err) {
-      return callback(err);
-    }
-    const signingKey = key?.getPublicKey();
-    callback(null, signingKey);
+// Get signing key from JWKS - Fixed for express-jwt compatibility
+function getKey(header: any): Promise<string> {
+  return new Promise((resolve, reject) => {
+    client.getSigningKey(header.kid, (err, key) => {
+      if (err) {
+        return reject(err);
+      }
+      const signingKey = key?.getPublicKey();
+      if (!signingKey) {
+        return reject(new Error('Unable to get signing key'));
+      }
+      resolve(signingKey);
+    });
   });
 }
 
@@ -31,7 +36,7 @@ export const validateJWT = expressjwt({
 });
 
 // Extract user info from JWT
-export const extractUserInfo = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+export const extractUserInfo = (req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
   if (req.auth) {
     req.user = {
       sub: req.auth.sub as string,
