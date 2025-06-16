@@ -265,3 +265,6 @@ export class HealthCheckService {
 }
 
 export const healthCheckService = new HealthCheckService();
+
+export const healthService = healthCheckService;
+export default healthService;
