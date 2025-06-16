@@ -1,4 +1,4 @@
-// src/server.ts - Updated Server for StoryLofts with Secret Manager
+// src/server.ts - Fixed Server Structure for StoryLofts
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -8,8 +8,6 @@ import { configPromise } from './config';
 import { uploadRouter } from './routes/upload';
 import { contentRouter } from './routes/content';
 import { healthRouter } from './routes/health';
-
-app.use('/health', healthRouter);
 
 async function createApp() {
   // Load configuration (including secrets)
@@ -93,7 +91,10 @@ async function createApp() {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-  // Health check endpoint
+  // ✅ HEALTH ROUTES - MOVED INSIDE createApp()
+  app.use('/health', healthRouter);
+
+  // Basic health check endpoint (fallback)
   app.get('/health', (req, res) => {
     res.json({
       success: true,
@@ -117,6 +118,7 @@ async function createApp() {
       description: 'Backend API for StoryLofts video platform',
       documentation: '/api/docs',
       health: '/health',
+      healthDetailed: '/health/detailed',
       version: '1.0.0',
       platform: 'StoryLofts'
     });
@@ -130,6 +132,14 @@ async function createApp() {
       platform: 'StoryLofts',
       baseUrl: config.server.apiBaseUrl,
       endpoints: {
+        health: {
+          'GET /health': 'Basic health check',
+          'GET /health/detailed': 'Comprehensive service health check',
+          'GET /health/auth0': 'Auth0 connectivity check',
+          'GET /health/storage': 'Backblaze B2 storage check',
+          'GET /health/secrets': 'Secret Manager check',
+          'GET /health/metrics': 'Prometheus metrics'
+        },
         upload: {
           'GET /api/upload/url': 'Get pre-signed upload URL',
           'POST /api/upload/direct': 'Direct upload to server',
@@ -158,7 +168,7 @@ async function createApp() {
       success: false,
       error: 'Endpoint not found',
       message: `Cannot ${req.method} ${req.originalUrl}`,
-      availableEndpoints: ['/health', '/api/docs', '/api/content', '/api/upload']
+      availableEndpoints: ['/health', '/health/detailed', '/api/docs', '/api/content', '/api/upload']
     });
   });
 
@@ -223,6 +233,7 @@ async function startServer() {
       console.log(`🔗 API URL: ${config.server.apiBaseUrl}`);
       console.log(`📚 Documentation: ${config.server.apiBaseUrl}/api/docs`);
       console.log(`💚 Health check: ${config.server.apiBaseUrl}/health`);
+      console.log(`🔍 Detailed health: ${config.server.apiBaseUrl}/health/detailed`);
       console.log(`🏠 Platform: StoryLofts`);
       console.log('================================================');
       
