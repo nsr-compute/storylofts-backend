@@ -193,7 +193,7 @@ router.post('/direct',
         fileSize: req.file.size,
         mimeType: req.file.mimetype,
         videoUrl: await backblazeService.getPublicUrl(uploadData.fileName),
-        status: 'ready', // In production, this might be 'processing'
+        status: VideoStatus.READY, // In production, this might be 'processing'
         visibility: visibility as VideoVisibility,
         tags: Array.isArray(tags) ? tags : []
       });
