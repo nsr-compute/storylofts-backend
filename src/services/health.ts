@@ -1,8 +1,10 @@
-// src/services/health.ts - Final TypeScript fix with explicit type assertion
+// src/services/health.ts - StoryLofts Health Check Service with Database Integration
 import { Request, Response } from 'express';
 import { config, configPromise } from '../config';
 import { backblazeService } from './backblaze';
 import { secretsService } from './secrets';
+import { db } from './database';
+import { HealthCheckResponse } from '../types';
 
 interface HealthStatus {
   service: string;
@@ -44,6 +46,103 @@ export class HealthCheckService {
   private startTime = Date.now();
 
   /**
+   * Get detailed health check (required by server.ts)
+   */
+  async getDetailedHealth(): Promise<HealthCheckResponse> {
+    const timestamp = new Date().toISOString();
+    const uptime = Date.now() - this.startTime;
+    const version = '1.0.0';
+    const environment = config.server.nodeEnv;
+
+    // Check all services in parallel
+    const [databaseHealth, auth0Health, storageHealth] = await Promise.allSettled([
+      this.checkDatabase(),
+      this.checkAuth0(),
+      this.checkBackblaze()
+    ]);
+
+    const services = {
+      database: databaseHealth.status === 'fulfilled' 
+        ? this.convertToSimpleHealth(databaseHealth.value)
+        : { status: 'unhealthy' as const, responseTime: 0, error: 'Database check failed' },
+      
+      auth0: auth0Health.status === 'fulfilled' 
+        ? this.convertToSimpleHealth(auth0Health.value)
+        : { status: 'unhealthy' as const, responseTime: 0, error: 'Auth0 check failed' },
+      
+      storage: storageHealth.status === 'fulfilled' 
+        ? this.convertToSimpleHealth(storageHealth.value)
+        : { status: 'unhealthy' as const, responseTime: 0, error: 'Storage check failed' }
+    };
+
+    // Overall status is healthy if all critical services are healthy
+    const isHealthy = services.database.status === 'healthy' && 
+                     services.auth0.status === 'healthy' && 
+                     services.storage.status === 'healthy';
+
+    return {
+      status: isHealthy ? 'healthy' : 'unhealthy',
+      timestamp,
+      uptime,
+      version,
+      environment,
+      services
+    };
+  }
+
+  /**
+   * Convert detailed health status to simple format for server.ts compatibility
+   */
+  private convertToSimpleHealth(healthStatus: HealthStatus): {
+    status: 'healthy' | 'unhealthy';
+    responseTime: number;
+    error?: string;
+  } {
+    return {
+      status: healthStatus.status === 'healthy' ? 'healthy' : 'unhealthy',
+      responseTime: healthStatus.responseTime,
+      error: healthStatus.error
+    };
+  }
+
+  /**
+   * Check PostgreSQL database connectivity
+   */
+  async checkDatabase(): Promise<HealthStatus> {
+    const start = Date.now();
+    
+    try {
+      const healthCheck = await db.healthCheck();
+      const responseTime = Date.now() - start;
+      
+      return {
+        service: 'Database',
+        status: healthCheck.healthy ? 'healthy' : 'unhealthy',
+        responseTime: healthCheck.responseTime,
+        error: healthCheck.error,
+        details: {
+          type: 'PostgreSQL',
+          connected: healthCheck.healthy,
+          host: 'DigitalOcean Managed Database',
+          ssl: 'enabled'
+        }
+      };
+    } catch (error: any) {
+      return {
+        service: 'Database',
+        status: 'unhealthy',
+        responseTime: Date.now() - start,
+        error: error.message,
+        details: {
+          type: 'PostgreSQL',
+          connected: false,
+          host: 'DigitalOcean Managed Database'
+        }
+      };
+    }
+  }
+
+  /**
    * Check Auth0 connectivity
    */
   async checkAuth0(): Promise<HealthStatus> {
@@ -64,7 +163,12 @@ export class HealthCheckService {
           service: 'Auth0',
           status: 'unhealthy',
           responseTime,
-          error: `HTTP ${response.status}: ${response.statusText}`
+          error: `HTTP ${response.status}: ${response.statusText}`,
+          details: {
+            domain: config.auth0.domain,
+            endpoint: `${config.auth0.domain}/.well-known/jwks.json`,
+            httpStatus: response.status
+          }
         };
       }
 
@@ -77,6 +181,7 @@ export class HealthCheckService {
         responseTime,
         details: {
           domain: config.auth0.domain,
+          audience: config.auth0.audience,
           keysCount: jwks.keys?.length || 0,
           endpoint: `${config.auth0.domain}/.well-known/jwks.json`
         }
@@ -87,7 +192,11 @@ export class HealthCheckService {
         service: 'Auth0',
         status: 'unhealthy',
         responseTime: Date.now() - start,
-        error: error.message
+        error: error.message,
+        details: {
+          domain: config.auth0.domain,
+          endpoint: `${config.auth0.domain}/.well-known/jwks.json`
+        }
       };
     }
   }
@@ -185,26 +294,6 @@ export class HealthCheckService {
   }
 
   /**
-   * Check database connectivity (placeholder for future PostgreSQL)
-   */
-  async checkDatabase(): Promise<HealthStatus> {
-    const start = Date.now();
-    
-    // Currently using in-memory storage
-    const responseTime = Date.now() - start;
-    
-    return {
-      service: 'Database',
-      status: 'healthy',
-      responseTime,
-      details: {
-        type: 'in_memory',
-        note: 'Using Map storage - will migrate to PostgreSQL'
-      }
-    };
-  }
-
-  /**
    * Run all health checks
    */
   async runAllChecks(): Promise<HealthCheckResult> {
@@ -264,7 +353,7 @@ export class HealthCheckService {
   }
 }
 
+// Export both names for compatibility
 export const healthCheckService = new HealthCheckService();
-
 export const healthService = healthCheckService;
 export default healthService;
