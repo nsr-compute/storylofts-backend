@@ -1,4 +1,4 @@
-// src/services/database.ts - Complete StoryLofts Database Service
+// src/services/database.ts - Complete StoryLofts Database Service with SSL Fix
 import { Pool, PoolClient } from 'pg';
 import { 
   VideoContent, 
@@ -45,36 +45,75 @@ class DatabaseService {
   private isConnected = false;
 
   constructor() {
+    // Configure SSL for DigitalOcean managed database
+    const sslConfig = process.env.NODE_ENV === 'production' ? {
+      rejectUnauthorized: false,
+      // Accept self-signed certificates from DigitalOcean
+      checkServerIdentity: () => undefined,
+      ca: undefined
+    } : false;
+
     this.pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      ssl: sslConfig,
       max: 20, // Maximum number of clients in the pool
       idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-      connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
+      connectionTimeoutMillis: 5000, // Increased timeout for DigitalOcean
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
     });
 
     this.pool.on('error', (err) => {
       console.error('Unexpected error on idle client', err);
+      this.isConnected = false;
+    });
+
+    this.pool.on('connect', () => {
+      console.log('✅ New database client connected');
+    });
+
+    this.pool.on('remove', () => {
+      console.log('Database client removed from pool');
     });
   }
 
   async connect(): Promise<void> {
     try {
+      console.log('🔌 Attempting to connect to PostgreSQL database...');
       const client = await this.pool.connect();
-      await client.query('SELECT 1'); // Test query
+      
+      // Test the connection
+      const result = await client.query('SELECT version(), current_database(), current_user');
+      console.log('📊 Database info:', {
+        version: result.rows[0].version.split(' ')[1],
+        database: result.rows[0].current_database,
+        user: result.rows[0].current_user
+      });
+      
       client.release();
       this.isConnected = true;
-      console.log('✅ Connected to PostgreSQL database');
+      console.log('✅ Connected to PostgreSQL database successfully');
     } catch (error) {
       console.error('❌ Failed to connect to database:', error);
+      console.error('💡 Connection details:', {
+        ssl: process.env.NODE_ENV === 'production' ? 'enabled (rejectUnauthorized: false)' : 'disabled',
+        hasConnectionString: !!process.env.DATABASE_URL,
+        nodeEnv: process.env.NODE_ENV
+      });
+      this.isConnected = false;
       throw error;
     }
   }
 
   async disconnect(): Promise<void> {
-    await this.pool.end();
-    this.isConnected = false;
-    console.log('🔌 Disconnected from database');
+    try {
+      await this.pool.end();
+      this.isConnected = false;
+      console.log('🔌 Disconnected from database');
+    } catch (error) {
+      console.error('Error disconnecting from database:', error);
+      throw error;
+    }
   }
 
   isHealthy(): boolean {
@@ -86,12 +125,13 @@ class DatabaseService {
     const startTime = Date.now();
     try {
       const client = await this.pool.connect();
-      await client.query('SELECT 1');
+      await client.query('SELECT 1 as health_check');
       client.release();
       const responseTime = Date.now() - startTime;
       return { healthy: true, responseTime };
     } catch (error) {
       const responseTime = Date.now() - startTime;
+      console.error('Database health check failed:', error);
       return { 
         healthy: false, 
         responseTime, 
@@ -146,6 +186,7 @@ class DatabaseService {
       return this.formatVideoContent(videoData);
     } catch (error) {
       await client.query('ROLLBACK');
+      console.error('Error creating video content:', error);
       throw error;
     } finally {
       client.release();
@@ -236,6 +277,7 @@ class DatabaseService {
       return this.getVideoContent(id, userId);
     } catch (error) {
       await client.query('ROLLBACK');
+      console.error('Error updating video content:', error);
       throw error;
     } finally {
       client.release();
@@ -596,6 +638,9 @@ class DatabaseService {
       ];
 
       await client.query(query, values);
+    } catch (error) {
+      console.error('Error tracking video view:', error);
+      // Don't throw - view tracking shouldn't break the app
     } finally {
       client.release();
     }
