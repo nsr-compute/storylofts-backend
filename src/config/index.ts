@@ -11,6 +11,13 @@ interface Config {
     apiBaseUrl: string;
     frontendUrl: string;
   };
+  api: {
+    baseUrl: string;
+  };
+  frontend: {
+    url: string;
+  };
+  environment: string;
   auth0: {
     domain: string;
     audience: string;
@@ -40,6 +47,13 @@ const baseConfig: Omit<Config, 'auth0' | 'backblaze'> = {
     apiBaseUrl: process.env.API_BASE_URL || 'http://localhost:3000',
     frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3001'
   },
+  api: {
+    baseUrl: process.env.API_BASE_URL || 'http://localhost:3000'
+  },
+  frontend: {
+    url: process.env.FRONTEND_URL || 'http://localhost:3001'
+  },
+  environment: process.env.NODE_ENV || 'development',
   upload: {
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '5368709120'), // 5GB
     allowedVideoFormats: (process.env.ALLOWED_VIDEO_FORMATS || 'mp4,mov,avi,mkv,webm').split(','),
@@ -130,6 +144,48 @@ async function loadConfig(): Promise<Config> {
     backblaze: backblazeConfig
   };
 }
+
+// ConfigService class for server.ts compatibility
+class ConfigService {
+  private cachedConfig: Config | null = null;
+
+  getConfig(): Config {
+    if (this.cachedConfig) {
+      return this.cachedConfig;
+    }
+
+    // Return synchronous config for immediate use
+    const syncConfig: Config = {
+      ...baseConfig,
+      auth0: {
+        domain: process.env.AUTH0_DOMAIN || '',
+        audience: process.env.AUTH0_AUDIENCE || ''
+      },
+      backblaze: {
+        applicationKeyId: process.env.B2_APPLICATION_KEY_ID || '',
+        applicationKey: process.env.B2_APPLICATION_KEY || '',
+        bucketId: process.env.B2_BUCKET_ID || '',
+        bucketName: process.env.B2_BUCKET_NAME || ''
+      }
+    };
+
+    this.cachedConfig = syncConfig;
+    return syncConfig;
+  }
+
+  async getConfigAsync(): Promise<Config> {
+    if (this.cachedConfig) {
+      return this.cachedConfig;
+    }
+
+    const config = await loadConfig();
+    this.cachedConfig = config;
+    return config;
+  }
+}
+
+// Export singleton instance for server.ts
+export const configService = new ConfigService();
 
 // Export a promise that resolves to the configuration
 export const configPromise = loadConfig();
