@@ -16,6 +16,7 @@
     "prebuild": "npm run clean",
     "deploy:staging": "npm run build && echo 'Deploy to staging'",
     "deploy:production": "npm run build && echo 'Deploy to production'",
+    "db:setup": "node scripts/setup-database.js",
     "secrets:setup": "node scripts/setup-secrets.js",
     "docker:build": "docker build -t storylofts-api .",
     "docker:run": "docker run -p 3000:3000 storylofts-api"
@@ -51,7 +52,8 @@
     "jwks-rsa": "^3.1.0",
     "uuid": "^9.0.1",
     "winston": "^3.11.0",
-    "compression": "^1.7.4"
+    "compression": "^1.7.4",
+    "pg": "^8.11.3"
   },
   "devDependencies": {
     "@types/node": "^20.10.4",
@@ -59,6 +61,7 @@
     "@types/cors": "^2.8.17",
     "@types/compression": "^1.7.5",
     "@types/uuid": "^9.0.7",
+    "@types/pg": "^8.10.9",
     "typescript": "^5.3.3",
     "ts-node-dev": "^2.0.0",
     "@typescript-eslint/eslint-plugin": "^6.13.2",
