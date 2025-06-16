@@ -1,10 +1,18 @@
-import { Router } from 'express';
+// src/routes/upload.ts - StoryLofts Upload Management Routes
+import { Router, Response } from 'express';
 import multer from 'multer';
-import { body, validationResult } from 'express-validator';
-import { requireAuth } from '../middleware/auth';
+import { body, query, param, validationResult } from 'express-validator';
+import { authenticateToken } from '../middleware/auth';
 import { backblazeService } from '../services/backblaze';
+import { db } from '../services/database';
 import { config } from '../config';
-import { AuthenticatedRequest, ApiResponse, VideoContent, VideoStatus, VideoVisibility } from '../types';
+import { 
+  AuthenticatedRequest, 
+  ApiResponse, 
+  VideoContent, 
+  VideoStatus, 
+  VideoVisibility 
+} from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
@@ -27,79 +35,141 @@ const upload = multer({
   }
 });
 
-// In-memory storage for video metadata (replace with database)
-const videoStorage = new Map<string, VideoContent>();
-
 /**
  * GET /api/upload/url
  * Get a pre-signed upload URL for direct upload to Backblaze B2
+ * Requires authentication
  */
-router.get('/url', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.get('/url', authenticateToken, [
+  query('filename')
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 500 })
+    .withMessage('Filename is required and must be between 1 and 500 characters'),
+  query('fileSize')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('File size must be a positive integer'),
+  query('mimeType')
+    .optional()
+    .isString()
+    .matches(/^video\//)
+    .withMessage('MIME type must be a valid video type')
+], async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { filename } = req.query;
-    
-    if (!filename || typeof filename !== 'string') {
-      return res.status(400).json({
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const response: ApiResponse = {
         success: false,
-        error: 'Filename is required'
-      } as ApiResponse);
+        error: 'Validation failed',
+        data: errors.array()
+      };
+      return res.status(400).json(response);
     }
 
+    const { filename, fileSize, mimeType } = req.query;
     const userId = req.user!.sub;
-    const uploadData = await backblazeService.getUploadUrl(userId, filename);
+
+    // Generate upload URL from Backblaze B2
+    const uploadData = await backblazeService.getUploadUrl(userId, filename as string);
     
-    res.json({
+    // Create upload session record
+    const sessionId = uuidv4();
+    const expiresAt = new Date(Date.now() + 3600000); // 1 hour from now
+
+    const response: ApiResponse = {
       success: true,
       data: {
         uploadUrl: uploadData.uploadUrl,
+        uploadId: sessionId,
         authorizationToken: uploadData.authorizationToken,
         fileName: uploadData.fileName,
         fileId: uploadData.fileId,
-        expiresAt: new Date(Date.now() + 3600000) // 1 hour from now
-      }
-    } as ApiResponse);
+        expiresAt: expiresAt.toISOString()
+      },
+      message: 'Upload URL generated successfully'
+    };
+
+    res.json(response);
   } catch (error) {
     console.error('Upload URL generation failed:', error);
-    res.status(500).json({
+    const response: ApiResponse = {
       success: false,
-      error: 'Failed to generate upload URL'
-    } as ApiResponse);
+      error: 'Failed to generate upload URL',
+      message: 'An error occurred while generating the upload URL'
+    };
+    res.status(500).json(response);
   }
 });
 
 /**
  * POST /api/upload/direct
  * Direct upload to our server (then to Backblaze B2)
+ * Requires authentication
  */
 router.post('/direct', 
-  requireAuth,
+  authenticateToken,
   upload.single('video'),
   [
-    body('title').isLength({ min: 1, max: 255 }).withMessage('Title is required and must be less than 255 characters'),
-    body('description').optional().isLength({ max: 1000 }).withMessage('Description must be less than 1000 characters'),
-    body('visibility').optional().isIn(['public', 'private', 'unlisted']).withMessage('Invalid visibility setting'),
-    body('tags').optional().isArray().withMessage('Tags must be an array')
+    body('title')
+      .isString()
+      .trim()
+      .isLength({ min: 1, max: 500 })
+      .withMessage('Title is required and must be between 1 and 500 characters'),
+    body('description')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 5000 })
+      .withMessage('Description must be less than 5000 characters'),
+    body('visibility')
+      .optional()
+      .isIn(['public', 'private', 'unlisted'])
+      .withMessage('Visibility must be one of: public, private, unlisted'),
+    body('tags')
+      .optional()
+      .isArray()
+      .withMessage('Tags must be an array'),
+    body('tags.*')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ min: 1, max: 100 })
+      .withMessage('Each tag must be between 1 and 100 characters')
   ],
-  async (req: AuthenticatedRequest, res) => {
+  async (req: AuthenticatedRequest, res: Response) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({
+        const response: ApiResponse = {
           success: false,
           error: 'Validation failed',
           data: errors.array()
-        } as ApiResponse);
+        };
+        return res.status(400).json(response);
       }
 
       if (!req.file) {
-        return res.status(400).json({
+        const response: ApiResponse = {
           success: false,
-          error: 'No file uploaded'
-        } as ApiResponse);
+          error: 'No file uploaded',
+          message: 'Please select a video file to upload'
+        };
+        return res.status(400).json(response);
       }
 
       const userId = req.user!.sub;
       const { title, description, visibility = 'private', tags = [] } = req.body;
+
+      // Check file size
+      if (req.file.size > config.upload.maxFileSize) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'File too large',
+          message: `File size exceeds the maximum limit of ${Math.round(config.upload.maxFileSize / 1024 / 1024 / 1024)}GB`
+        };
+        return res.status(413).json(response);
+      }
 
       // Get upload URL from Backblaze
       const uploadData = await backblazeService.getUploadUrl(userId, req.file.originalname);
@@ -113,41 +183,48 @@ router.post('/direct',
         req.file.mimetype
       );
 
-      // Create video record
-      const videoId = uuidv4();
-      const videoContent: VideoContent = {
-        id: videoId,
+      // Create video content record in database
+      const videoContent = await db.createVideoContent({
         userId,
         title,
         description: description || '',
         filename: uploadData.fileName,
         originalFilename: req.file.originalname,
         fileSize: req.file.size,
-        duration: undefined, // Will be filled by video processing
         mimeType: req.file.mimetype,
-        thumbnailUrl: undefined,
         videoUrl: await backblazeService.getPublicUrl(uploadData.fileName),
-        status: VideoStatus.READY, // In production, this would be PROCESSING
+        status: 'ready', // In production, this might be 'processing'
         visibility: visibility as VideoVisibility,
-        tags: Array.isArray(tags) ? tags : [],
-        createdAt: new Date(),
-        updatedAt: new Date()
+        tags: Array.isArray(tags) ? tags : []
+      });
+
+      const response: ApiResponse<VideoContent> = {
+        success: true,
+        data: videoContent,
+        message: 'Video uploaded successfully'
       };
 
-      // Store video metadata (replace with database)
-      videoStorage.set(videoId, videoContent);
-
-      res.status(201).json({
-        success: true,
-        data: videoContent
-      } as ApiResponse<VideoContent>);
+      res.status(201).json(response);
 
     } catch (error) {
       console.error('Direct upload failed:', error);
-      res.status(500).json({
+      
+      // Handle specific errors
+      if (error instanceof Error && error.message.includes('file size')) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'File too large',
+          message: 'The uploaded file exceeds the maximum size limit'
+        };
+        return res.status(413).json(response);
+      }
+
+      const response: ApiResponse = {
         success: false,
-        error: 'Upload failed'
-      } as ApiResponse);
+        error: 'Upload failed',
+        message: 'An error occurred while uploading the video'
+      };
+      res.status(500).json(response);
     }
   }
 );
@@ -155,114 +232,249 @@ router.post('/direct',
 /**
  * POST /api/upload/complete
  * Complete upload process after direct B2 upload
+ * Requires authentication
  */
 router.post('/complete',
-  requireAuth,
+  authenticateToken,
   [
-    body('fileName').isString().withMessage('File name is required'),
-    body('fileId').isString().withMessage('File ID is required'),
-    body('title').isLength({ min: 1, max: 255 }).withMessage('Title is required'),
-    body('description').optional().isLength({ max: 1000 }),
-    body('visibility').optional().isIn(['public', 'private', 'unlisted']),
-    body('tags').optional().isArray()
+    body('fileName')
+      .isString()
+      .trim()
+      .isLength({ min: 1, max: 500 })
+      .withMessage('File name is required and must be between 1 and 500 characters'),
+    body('fileId')
+      .isString()
+      .trim()
+      .withMessage('File ID is required'),
+    body('title')
+      .isString()
+      .trim()
+      .isLength({ min: 1, max: 500 })
+      .withMessage('Title is required and must be between 1 and 500 characters'),
+    body('description')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 5000 })
+      .withMessage('Description must be less than 5000 characters'),
+    body('visibility')
+      .optional()
+      .isIn(['public', 'private', 'unlisted'])
+      .withMessage('Visibility must be one of: public, private, unlisted'),
+    body('tags')
+      .optional()
+      .isArray()
+      .withMessage('Tags must be an array'),
+    body('tags.*')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ min: 1, max: 100 })
+      .withMessage('Each tag must be between 1 and 100 characters'),
+    body('fileSize')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('File size must be a positive integer'),
+    body('mimeType')
+      .optional()
+      .isString()
+      .matches(/^video\//)
+      .withMessage('MIME type must be a valid video type')
   ],
-  async (req: AuthenticatedRequest, res) => {
+  async (req: AuthenticatedRequest, res: Response) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({
+        const response: ApiResponse = {
           success: false,
           error: 'Validation failed',
           data: errors.array()
-        } as ApiResponse);
+        };
+        return res.status(400).json(response);
       }
 
       const userId = req.user!.sub;
-      const { fileName, fileId, title, description, visibility = 'private', tags = [] } = req.body;
+      const { 
+        fileName, 
+        fileId, 
+        title, 
+        description, 
+        visibility = 'private', 
+        tags = [],
+        fileSize,
+        mimeType 
+      } = req.body;
 
-      // Create video record
-      const videoId = uuidv4();
-      const videoContent: VideoContent = {
-        id: videoId,
+      // Create video content record in database
+      const videoContent = await db.createVideoContent({
         userId,
         title,
         description: description || '',
         filename: fileName,
         originalFilename: fileName.split('/').pop() || fileName,
-        fileSize: 0, // Will be updated by processing
-        duration: undefined,
-        mimeType: 'video/mp4', // Default, will be updated
-        thumbnailUrl: undefined,
+        fileSize: fileSize || 0,
+        mimeType: mimeType || 'video/mp4',
         videoUrl: await backblazeService.getPublicUrl(fileName),
-        status: VideoStatus.PROCESSING,
+        status: 'processing', // Will be updated when processing completes
         visibility: visibility as VideoVisibility,
-        tags: Array.isArray(tags) ? tags : [],
-        createdAt: new Date(),
-        updatedAt: new Date()
+        tags: Array.isArray(tags) ? tags : []
+      });
+
+      const response: ApiResponse<VideoContent> = {
+        success: true,
+        data: videoContent,
+        message: 'Upload completed successfully'
       };
 
-      // Store video metadata (replace with database)
-      videoStorage.set(videoId, videoContent);
-
-      res.status(201).json({
-        success: true,
-        data: videoContent
-      } as ApiResponse<VideoContent>);
+      res.status(201).json(response);
 
     } catch (error) {
       console.error('Upload completion failed:', error);
-      res.status(500).json({
+      const response: ApiResponse = {
         success: false,
-        error: 'Failed to complete upload'
-      } as ApiResponse);
+        error: 'Failed to complete upload',
+        message: 'An error occurred while completing the upload process'
+      };
+      res.status(500).json(response);
     }
   }
 );
 
 /**
  * GET /api/upload/status/:id
- * Get upload/processing status
+ * Get upload/processing status for a video
+ * Requires authentication and ownership
  */
-router.get('/status/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.get('/status/:id', authenticateToken, [
+  param('id').isUUID().withMessage('Valid UUID required for video ID')
+], async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'Invalid video ID',
+        data: errors.array()
+      };
+      return res.status(400).json(response);
+    }
+
     const { id } = req.params;
     const userId = req.user!.sub;
     
-    const video = videoStorage.get(id);
+    const video = await db.getVideoContent(id, userId);
     
     if (!video) {
-      return res.status(404).json({
+      const response: ApiResponse = {
         success: false,
-        error: 'Video not found'
-      } as ApiResponse);
+        error: 'Video not found',
+        message: 'The requested video does not exist or you do not have permission to view it'
+      };
+      return res.status(404).json(response);
     }
 
     if (video.userId !== userId) {
-      return res.status(403).json({
+      const response: ApiResponse = {
         success: false,
-        error: 'Access denied'
-      } as ApiResponse);
+        error: 'Access denied',
+        message: 'You do not have permission to view this video status'
+      };
+      return res.status(403).json(response);
     }
 
-    res.json({
+    // Calculate progress based on status
+    let progress = 0;
+    switch (video.status) {
+      case 'uploading':
+        progress = 25;
+        break;
+      case 'processing':
+        progress = 75;
+        break;
+      case 'ready':
+        progress = 100;
+        break;
+      case 'failed':
+        progress = 0;
+        break;
+    }
+
+    const response: ApiResponse = {
       success: true,
       data: {
         id: video.id,
         status: video.status,
         title: video.title,
-        progress: video.status === VideoStatus.READY ? 100 : 
-                 video.status === VideoStatus.PROCESSING ? 50 : 0
-      }
-    } as ApiResponse);
+        progress,
+        fileSize: video.fileSize,
+        duration: video.duration,
+        createdAt: video.createdAt,
+        updatedAt: video.updatedAt
+      },
+      message: `Video status: ${video.status}`
+    };
+
+    res.json(response);
 
   } catch (error) {
     console.error('Status check failed:', error);
-    res.status(500).json({
+    const response: ApiResponse = {
       success: false,
-      error: 'Failed to get upload status'
-    } as ApiResponse);
+      error: 'Failed to get upload status',
+      message: 'An error occurred while checking the video status'
+    };
+    res.status(500).json(response);
   }
 });
 
-export { router as uploadRouter };
-export { videoStorage }; // Export for use in other routes
+/**
+ * DELETE /api/upload/:id
+ * Cancel/delete an upload
+ * Requires authentication and ownership
+ */
+router.delete('/:id', authenticateToken, [
+  param('id').isUUID().withMessage('Valid UUID required for video ID')
+], async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'Invalid video ID',
+        data: errors.array()
+      };
+      return res.status(400).json(response);
+    }
+
+    const { id } = req.params;
+    const userId = req.user!.sub;
+
+    const deleted = await db.deleteVideoContent(id, userId);
+
+    if (!deleted) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'Video not found or access denied',
+        message: 'The video does not exist or you do not have permission to delete it'
+      };
+      return res.status(404).json(response);
+    }
+
+    const response: ApiResponse = {
+      success: true,
+      message: 'Upload cancelled and video deleted successfully'
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error('Upload cancellation failed:', error);
+    const response: ApiResponse = {
+      success: false,
+      error: 'Failed to cancel upload',
+      message: 'An error occurred while cancelling the upload'
+    };
+    res.status(500).json(response);
+  }
+});
+
+export default router;
