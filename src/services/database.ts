@@ -104,7 +104,7 @@ class DatabaseService {
 
   async connect(): Promise<void> {
     let retries = 3;
-    let lastError: Error;
+    let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
@@ -141,18 +141,24 @@ class DatabaseService {
 
     // All attempts failed
     console.error('❌ All database connection attempts failed');
-    console.error('💡 Connection troubleshooting info:', {
-      ssl: process.env.NODE_ENV === 'production' ? 'enabled (rejectUnauthorized: false)' : 'disabled',
-      hasConnectionString: !!process.env.DATABASE_URL,
-      nodeEnv: process.env.NODE_ENV,
-      connectionStringFormat: process.env.DATABASE_URL ? 
-        process.env.DATABASE_URL.replace(/:\/\/[^:]+:[^@]+@/, '://***:***@') : 'missing',
-      lastError: lastError.message,
-      errorCode: (lastError as any).code
-    });
-    
-    this.isConnected = false;
-    throw lastError;
+    if (lastError) {
+      console.error('💡 Connection troubleshooting info:', {
+        ssl: process.env.NODE_ENV === 'production' ? 'enabled (rejectUnauthorized: false)' : 'disabled',
+        hasConnectionString: !!process.env.DATABASE_URL,
+        nodeEnv: process.env.NODE_ENV,
+        connectionStringFormat: process.env.DATABASE_URL ? 
+          process.env.DATABASE_URL.replace(/:\/\/[^:]+:[^@]+@/, '://***:***@') : 'missing',
+        lastError: lastError.message,
+        errorCode: (lastError as any).code
+      });
+      
+      this.isConnected = false;
+      throw lastError;
+    } else {
+      const fallbackError = new Error('Failed to connect to database after all retries');
+      this.isConnected = false;
+      throw fallbackError;
+    }
   }
 
   async disconnect(): Promise<void> {
