@@ -7,6 +7,9 @@ import rateLimit from 'express-rate-limit';
 import { configPromise } from './config';
 import { uploadRouter } from './routes/upload';
 import { contentRouter } from './routes/content';
+import { healthRouter } from './routes/health';
+
+app.use('/health', healthRouter);
 
 async function createApp() {
   // Load configuration (including secrets)
