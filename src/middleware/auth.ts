@@ -67,3 +67,6 @@ export const optionalAuth = (req: Request, res: Response, next: NextFunction) =>
 
 // Required authentication middleware
 export const requireAuth = [validateJWT, extractUserInfo];
+
+// Export alias for compatibility with routes
+export const authenticateToken = requireAuth;
