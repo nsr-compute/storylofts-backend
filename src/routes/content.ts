@@ -431,4 +431,83 @@ router.get('/meta/tags', async (req: AuthenticatedRequest, res: Response) => {
       message: `Found ${tags.length} professional content tags`
     };
 
-    res.json(
+    res.json(response);
+  } catch (error) {
+    console.error('Error fetching tags:', error);
+    const response: ApiResponse = {
+      success: false,
+      error: 'Failed to fetch tags',
+      message: 'An error occurred while retrieving content tags'
+    };
+    res.status(500).json(response);
+  }
+});
+
+/**
+ * POST /api/content/meta/tags
+ * Create new content tag
+ * Requires authentication
+ */
+router.post('/meta/tags', authenticateToken, [
+  body('name')
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 100 })
+    .withMessage('Tag name is required and must be between 1 and 100 characters'),
+  body('color')
+    .optional()
+    .matches(/^#[0-9A-Fa-f]{6}$/)
+    .withMessage('Color must be a valid hex color code (e.g., #ff0000)'),
+  body('description')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('Description must be less than 500 characters')
+], async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'Validation failed',
+        data: errors.array()
+      };
+      return res.status(400).json(response);
+    }
+
+    const { name, color, description } = req.body;
+    
+    try {
+      await db.createTag(name, color, description);
+
+      const response: ApiResponse = {
+        success: true,
+        message: `Tag "${name}" created successfully`
+      };
+
+      res.status(201).json(response);
+    } catch (error) {
+      // Handle duplicate tag name
+      if (error instanceof Error && error.message.includes('duplicate key')) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Tag already exists',
+          message: `A tag with the name "${name}" already exists`
+        };
+        return res.status(409).json(response);
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error creating tag:', error);
+    const response: ApiResponse = {
+      success: false,
+      error: 'Failed to create tag',
+      message: 'An error occurred while creating the content tag'
+    };
+    res.status(500).json(response);
+  }
+});
+
+export default router;
