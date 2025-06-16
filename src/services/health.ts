@@ -1,9 +1,8 @@
-// src/services/health.ts - Comprehensive Health Check Service
+// src/services/health.ts - Fixed TypeScript errors
 import { Request, Response } from 'express';
 import { config, configPromise } from '../config';
 import { backblazeService } from './backblaze';
 import { secretsService } from './secrets';
-import jwksClient from 'jwks-rsa';
 
 interface HealthStatus {
   service: string;
@@ -28,6 +27,19 @@ interface HealthCheckResult {
   };
 }
 
+// Interface for JWKS response
+interface JWKSResponse {
+  keys?: Array<{
+    kty: string;
+    use?: string;
+    kid: string;
+    x5t?: string;
+    n?: string;
+    e?: string;
+    [key: string]: any;
+  }>;
+}
+
 export class HealthCheckService {
   private startTime = Date.now();
 
@@ -38,11 +50,6 @@ export class HealthCheckService {
     const start = Date.now();
     
     try {
-      const client = jwksClient({
-        jwksUri: `https://${config.auth0.domain}/.well-known/jwks.json`,
-        timeout: 5000
-      });
-
       // Test JWKS endpoint connectivity
       const response = await fetch(`https://${config.auth0.domain}/.well-known/jwks.json`, {
         method: 'GET',
@@ -61,7 +68,7 @@ export class HealthCheckService {
         };
       }
 
-      const jwks = await response.json();
+      const jwks: JWKSResponse = await response.json();
       
       return {
         service: 'Auth0',
