@@ -1,6 +1,44 @@
-// src/services/database.ts
+// src/services/database.ts - Complete StoryLofts Database Service
 import { Pool, PoolClient } from 'pg';
-import { VideoContent, VideoContentInput, PaginatedResponse } from '../types';
+import { 
+  VideoContent, 
+  VideoContentInput, 
+  PaginatedResponse, 
+  VideoListOptions,
+  VideoStatus,
+  VideoVisibility 
+} from '../types';
+
+interface UserContentStats {
+  totalVideos: number;
+  totalSize: number;
+  totalDuration: number;
+  statusBreakdown: Record<string, number>;
+  visibilityBreakdown: Record<string, number>;
+  topTags: Array<{ name: string; count: number }>;
+  recentUploads: number;
+}
+
+interface SearchOptions {
+  query: string;
+  page?: number;
+  limit?: number;
+  visibility?: VideoVisibility;
+  minDuration?: number;
+  maxDuration?: number;
+  tags?: string[];
+}
+
+interface VideoViewData {
+  videoId: string;
+  viewerUserId?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  watchDuration?: number;
+  watchPercentage?: number;
+  referrer?: string;
+  deviceType?: string;
+}
 
 class DatabaseService {
   private pool: Pool;
@@ -66,11 +104,14 @@ class DatabaseService {
   async createVideoContent(content: VideoContentInput): Promise<VideoContent> {
     const client = await this.pool.connect();
     try {
+      await client.query('BEGIN');
+
       const query = `
         INSERT INTO video_content (
           user_id, title, description, filename, original_filename, 
-          file_size, video_url, status, visibility, mime_type
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          file_size, video_url, status, visibility, mime_type, duration,
+          thumbnail_url, resolution, fps, bitrate, codec
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
         RETURNING *
       `;
       
@@ -84,7 +125,13 @@ class DatabaseService {
         content.videoUrl,
         content.status || 'uploading',
         content.visibility || 'private',
-        content.mimeType || null
+        content.mimeType || null,
+        content.duration || null,
+        content.thumbnailUrl || null,
+        content.resolution || null,
+        content.fps || null,
+        content.bitrate || null,
+        content.codec || null
       ];
 
       const result = await client.query(query, values);
@@ -95,7 +142,11 @@ class DatabaseService {
         await this.updateVideoTags(client, videoData.id, content.tags);
       }
 
+      await client.query('COMMIT');
       return this.formatVideoContent(videoData);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
     } finally {
       client.release();
     }
@@ -209,14 +260,7 @@ class DatabaseService {
 
   async listVideoContent(
     userId?: string,
-    options: {
-      page?: number;
-      limit?: number;
-      status?: string;
-      visibility?: string;
-      tags?: string[];
-      search?: string;
-    } = {}
+    options: VideoListOptions = {}
   ): Promise<PaginatedResponse<VideoContent>> {
     const client = await this.pool.connect();
     try {
@@ -226,7 +270,9 @@ class DatabaseService {
         status,
         visibility,
         tags,
-        search
+        search,
+        sortBy = 'created_at',
+        sortOrder = 'desc'
       } = options;
 
       const offset = (page - 1) * limit;
@@ -271,11 +317,16 @@ class DatabaseService {
         paramIndex++;
       }
 
-      // Search filter
+      // Search filter - use full-text search
       if (search) {
-        conditions.push(`(vc.title ILIKE $${paramIndex} OR vc.description ILIKE $${paramIndex})`);
-        values.push(`%${search}%`);
-        paramIndex++;
+        conditions.push(`(
+          to_tsvector('english', vc.title || ' ' || COALESCE(vc.description, '')) 
+          @@ plainto_tsquery('english', $${paramIndex})
+          OR vc.title ILIKE $${paramIndex + 1} 
+          OR vc.description ILIKE $${paramIndex + 1}
+        )`);
+        values.push(search, `%${search}%`);
+        paramIndex += 2;
       }
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -290,14 +341,16 @@ class DatabaseService {
       const countResult = await client.query(countQuery, values);
       const total = parseInt(countResult.rows[0].total);
 
-      // Data query
+      // Data query with sorting
+      const orderClause = `ORDER BY vc.${this.camelToSnake(sortBy)} ${sortOrder.toUpperCase()}`;
+      
       const dataQuery = `
         SELECT vc.*, 
                COALESCE(array_agg(DISTINCT t.name) FILTER (WHERE t.name IS NOT NULL), '{}') as tags
         ${baseQuery}
         ${whereClause}
         GROUP BY vc.id
-        ORDER BY vc.created_at DESC
+        ${orderClause}
         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
       `;
 
@@ -322,26 +375,265 @@ class DatabaseService {
     }
   }
 
+  // Advanced search with full-text search
+  async searchVideoContent(
+    userId?: string,
+    options: SearchOptions = { query: '' }
+  ): Promise<PaginatedResponse<VideoContent>> {
+    const client = await this.pool.connect();
+    try {
+      const {
+        query: searchQuery,
+        page = 1,
+        limit = 20,
+        visibility,
+        minDuration,
+        maxDuration,
+        tags
+      } = options;
+
+      const offset = (page - 1) * limit;
+      const conditions: string[] = [];
+      const values: any[] = [];
+      let paramIndex = 1;
+
+      // Base query with full-text search
+      let baseQuery = `
+        FROM video_content vc
+        LEFT JOIN video_tags vt ON vc.id = vt.video_id
+        LEFT JOIN tags t ON vt.tag_id = t.id
+      `;
+
+      // Full-text search condition
+      conditions.push(`(
+        to_tsvector('english', vc.title || ' ' || COALESCE(vc.description, '')) 
+        @@ plainto_tsquery('english', $${paramIndex})
+        OR vc.title ILIKE $${paramIndex + 1}
+        OR vc.description ILIKE $${paramIndex + 1}
+      )`);
+      values.push(searchQuery, `%${searchQuery}%`);
+      paramIndex += 2;
+
+      // User access control
+      if (userId) {
+        conditions.push(`(vc.visibility = 'public' OR vc.user_id = $${paramIndex})`);
+        values.push(userId);
+        paramIndex++;
+      } else {
+        conditions.push(`vc.visibility = 'public'`);
+      }
+
+      // Additional filters
+      if (visibility) {
+        conditions.push(`vc.visibility = $${paramIndex}`);
+        values.push(visibility);
+        paramIndex++;
+      }
+
+      if (minDuration !== undefined) {
+        conditions.push(`vc.duration >= $${paramIndex}`);
+        values.push(minDuration);
+        paramIndex++;
+      }
+
+      if (maxDuration !== undefined) {
+        conditions.push(`vc.duration <= $${paramIndex}`);
+        values.push(maxDuration);
+        paramIndex++;
+      }
+
+      if (tags && tags.length > 0) {
+        conditions.push(`t.name = ANY($${paramIndex})`);
+        values.push(tags);
+        paramIndex++;
+      }
+
+      const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
+      // Count query
+      const countQuery = `
+        SELECT COUNT(DISTINCT vc.id) as total
+        ${baseQuery}
+        ${whereClause}
+      `;
+
+      const countResult = await client.query(countQuery, values);
+      const total = parseInt(countResult.rows[0].total);
+
+      // Data query with relevance scoring
+      const dataQuery = `
+        SELECT vc.*, 
+               COALESCE(array_agg(DISTINCT t.name) FILTER (WHERE t.name IS NOT NULL), '{}') as tags,
+               ts_rank(to_tsvector('english', vc.title || ' ' || COALESCE(vc.description, '')), 
+                      plainto_tsquery('english', $1)) as relevance_score
+        ${baseQuery}
+        ${whereClause}
+        GROUP BY vc.id
+        ORDER BY relevance_score DESC, vc.created_at DESC
+        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+      `;
+
+      values.push(limit, offset);
+      const dataResult = await client.query(dataQuery, values);
+
+      const items = dataResult.rows.map(row => this.formatVideoContent(row));
+
+      return {
+        items,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page * limit < total,
+          hasPrev: page > 1
+        }
+      };
+    } finally {
+      client.release();
+    }
+  }
+
+  // User statistics
+  async getUserContentStats(userId: string): Promise<UserContentStats> {
+    const client = await this.pool.connect();
+    try {
+      // Basic stats
+      const basicStatsQuery = `
+        SELECT 
+          COUNT(*) as total_videos,
+          COALESCE(SUM(file_size), 0) as total_size,
+          COALESCE(SUM(duration), 0) as total_duration,
+          COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days') as recent_uploads
+        FROM video_content 
+        WHERE user_id = $1
+      `;
+      
+      const basicStats = await client.query(basicStatsQuery, [userId]);
+      
+      // Status breakdown
+      const statusQuery = `
+        SELECT status, COUNT(*) as count
+        FROM video_content 
+        WHERE user_id = $1 
+        GROUP BY status
+      `;
+      
+      const statusResult = await client.query(statusQuery, [userId]);
+      const statusBreakdown = statusResult.rows.reduce((acc, row) => {
+        acc[row.status] = parseInt(row.count);
+        return acc;
+      }, {} as Record<string, number>);
+
+      // Visibility breakdown
+      const visibilityQuery = `
+        SELECT visibility, COUNT(*) as count
+        FROM video_content 
+        WHERE user_id = $1 
+        GROUP BY visibility
+      `;
+      
+      const visibilityResult = await client.query(visibilityQuery, [userId]);
+      const visibilityBreakdown = visibilityResult.rows.reduce((acc, row) => {
+        acc[row.visibility] = parseInt(row.count);
+        return acc;
+      }, {} as Record<string, number>);
+
+      // Top tags
+      const tagsQuery = `
+        SELECT t.name, COUNT(*) as count
+        FROM video_content vc
+        JOIN video_tags vt ON vc.id = vt.video_id
+        JOIN tags t ON vt.tag_id = t.id
+        WHERE vc.user_id = $1
+        GROUP BY t.name
+        ORDER BY count DESC
+        LIMIT 10
+      `;
+      
+      const tagsResult = await client.query(tagsQuery, [userId]);
+      const topTags = tagsResult.rows.map(row => ({
+        name: row.name,
+        count: parseInt(row.count)
+      }));
+
+      const stats = basicStats.rows[0];
+      
+      return {
+        totalVideos: parseInt(stats.total_videos),
+        totalSize: parseInt(stats.total_size),
+        totalDuration: parseInt(stats.total_duration),
+        statusBreakdown,
+        visibilityBreakdown,
+        topTags,
+        recentUploads: parseInt(stats.recent_uploads)
+      };
+    } finally {
+      client.release();
+    }
+  }
+
+  // Analytics - Track video views
+  async trackVideoView(viewData: VideoViewData): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      const query = `
+        INSERT INTO video_views (
+          video_id, viewer_user_id, ip_address, user_agent,
+          watch_duration, watch_percentage, referrer, device_type
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `;
+      
+      const values = [
+        viewData.videoId,
+        viewData.viewerUserId || null,
+        viewData.ipAddress || null,
+        viewData.userAgent || null,
+        viewData.watchDuration || null,
+        viewData.watchPercentage || null,
+        viewData.referrer || null,
+        viewData.deviceType || null
+      ];
+
+      await client.query(query, values);
+    } finally {
+      client.release();
+    }
+  }
+
   // Tag management
-  async createTag(name: string, color?: string): Promise<void> {
+  async createTag(name: string, color?: string, description?: string): Promise<void> {
     const client = await this.pool.connect();
     try {
       const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       
       await client.query(
-        `INSERT INTO tags (name, slug, color) VALUES ($1, $2, $3) ON CONFLICT (slug) DO NOTHING`,
-        [name, slug, color || '#6b7280']
+        `INSERT INTO tags (name, slug, color, description) 
+         VALUES ($1, $2, $3, $4) 
+         ON CONFLICT (slug) DO NOTHING`,
+        [name, slug, color || '#6b7280', description || null]
       );
     } finally {
       client.release();
     }
   }
 
-  async getTags(): Promise<Array<{ name: string; slug: string; color: string }>> {
+  async getTags(): Promise<Array<{ id: string; name: string; slug: string; color: string; description?: string; usageCount: number }>> {
     const client = await this.pool.connect();
     try {
-      const result = await client.query('SELECT name, slug, color FROM tags ORDER BY name');
-      return result.rows;
+      const result = await client.query(`
+        SELECT id, name, slug, color, description, usage_count 
+        FROM tags 
+        ORDER BY usage_count DESC, name ASC
+      `);
+      return result.rows.map(row => ({
+        id: row.id,
+        name: row.name,
+        slug: row.slug,
+        color: row.color,
+        description: row.description,
+        usageCount: parseInt(row.usage_count || 0)
+      }));
     } finally {
       client.release();
     }
@@ -394,8 +686,8 @@ class DatabaseService {
       duration: row.duration,
       videoUrl: row.video_url,
       thumbnailUrl: row.thumbnail_url,
-      status: row.status,
-      visibility: row.visibility,
+      status: row.status as VideoStatus,
+      visibility: row.visibility as VideoVisibility,
       mimeType: row.mime_type,
       resolution: row.resolution,
       fps: row.fps,
