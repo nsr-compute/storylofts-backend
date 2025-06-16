@@ -1,4 +1,4 @@
-// src/services/health.ts - Fixed TypeScript errors
+// src/services/health.ts - Final TypeScript fix with explicit type assertion
 import { Request, Response } from 'express';
 import { config, configPromise } from '../config';
 import { backblazeService } from './backblaze';
@@ -68,7 +68,8 @@ export class HealthCheckService {
         };
       }
 
-      const jwks: JWKSResponse = await response.json();
+      // Explicit type assertion to fix TypeScript error
+      const jwks = await response.json() as JWKSResponse;
       
       return {
         service: 'Auth0',
@@ -148,7 +149,7 @@ export class HealthCheckService {
       const responseTime = Date.now() - start;
 
       // Test bucket access with a simple list operation
-      const listResult = await backblazeService.listFiles(undefined, undefined, 1);
+      await backblazeService.listFiles(undefined, undefined, 1);
       
       return {
         service: 'Backblaze B2',
@@ -207,8 +208,6 @@ export class HealthCheckService {
    * Run all health checks
    */
   async runAllChecks(): Promise<HealthCheckResult> {
-    const start = Date.now();
-
     // Run all checks in parallel for faster response
     const [auth0, secretManager, backblaze, database] = await Promise.all([
       this.checkAuth0(),
