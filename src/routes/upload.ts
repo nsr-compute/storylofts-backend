@@ -315,7 +315,7 @@ router.post('/complete',
         fileSize: fileSize || 0,
         mimeType: mimeType || 'video/mp4',
         videoUrl: await backblazeService.getPublicUrl(fileName),
-        status: 'processing', // Will be updated when processing completes
+        status: VideoStatus.PROCESSING, // Will be updated when processing completes
         visibility: visibility as VideoVisibility,
         tags: Array.isArray(tags) ? tags : []
       });
