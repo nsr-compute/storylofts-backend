@@ -1,4 +1,4 @@
-// src/services/database.ts - Complete StoryLofts Database Service with SSL Fix
+// src/services/database.ts - StoryLofts Database Service with Enhanced SSL Fix
 import { Pool, PoolClient } from 'pg';
 import { 
   VideoContent, 
@@ -45,64 +45,114 @@ class DatabaseService {
   private isConnected = false;
 
   constructor() {
-    // Configure SSL for DigitalOcean managed database
+    // Enhanced SSL configuration for DigitalOcean managed database
     const sslConfig = process.env.NODE_ENV === 'production' ? {
       rejectUnauthorized: false,
       // Accept self-signed certificates from DigitalOcean
       checkServerIdentity: () => undefined,
-      ca: undefined
+      ca: undefined,
+      // Additional SSL options for DigitalOcean compatibility
+      secureProtocol: 'TLSv1_2_method',
+      ciphers: 'HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA'
     } : false;
 
+    // Parse connection string to handle SSL parameters
+    let connectionConfig;
+    if (process.env.DATABASE_URL) {
+      // Remove sslmode from connection string as we're handling SSL in the config
+      const cleanUrl = process.env.DATABASE_URL.replace(/[?&]sslmode=[^&]*/, '');
+      connectionConfig = {
+        connectionString: cleanUrl,
+        ssl: sslConfig
+      };
+    } else {
+      connectionConfig = {
+        ssl: sslConfig
+      };
+    }
+
     this.pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: sslConfig,
+      ...connectionConfig,
       max: 20, // Maximum number of clients in the pool
       idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-      connectionTimeoutMillis: 5000, // Increased timeout for DigitalOcean
+      connectionTimeoutMillis: 10000, // Increased timeout for DigitalOcean
       keepAlive: true,
       keepAliveInitialDelayMillis: 10000,
+      // Additional pool options for stability
+      statement_timeout: 30000,
+      query_timeout: 30000,
+      application_name: 'storylofts-contenthive-api'
     });
 
     this.pool.on('error', (err) => {
-      console.error('Unexpected error on idle client', err);
+      console.error('❌ Unexpected error on idle client', err);
       this.isConnected = false;
     });
 
-    this.pool.on('connect', () => {
+    this.pool.on('connect', (client) => {
       console.log('✅ New database client connected');
+      // Set session parameters for better performance
+      client.query('SET timezone = "UTC"').catch(err => 
+        console.warn('Warning: Could not set timezone:', err.message)
+      );
     });
 
     this.pool.on('remove', () => {
-      console.log('Database client removed from pool');
+      console.log('📤 Database client removed from pool');
     });
   }
 
   async connect(): Promise<void> {
-    try {
-      console.log('🔌 Attempting to connect to PostgreSQL database...');
-      const client = await this.pool.connect();
-      
-      // Test the connection
-      const result = await client.query('SELECT version(), current_database(), current_user');
-      console.log('📊 Database info:', {
-        version: result.rows[0].version.split(' ')[1],
-        database: result.rows[0].current_database,
-        user: result.rows[0].current_user
-      });
-      
-      client.release();
-      this.isConnected = true;
-      console.log('✅ Connected to PostgreSQL database successfully');
-    } catch (error) {
-      console.error('❌ Failed to connect to database:', error);
-      console.error('💡 Connection details:', {
-        ssl: process.env.NODE_ENV === 'production' ? 'enabled (rejectUnauthorized: false)' : 'disabled',
-        hasConnectionString: !!process.env.DATABASE_URL,
-        nodeEnv: process.env.NODE_ENV
-      });
-      this.isConnected = false;
-      throw error;
+    let retries = 3;
+    let lastError: Error;
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.log(`🔌 Attempting to connect to PostgreSQL database (attempt ${attempt}/${retries})...`);
+        
+        const client = await this.pool.connect();
+        
+        // Test the connection with a simple query
+        const result = await client.query('SELECT version(), current_database(), current_user, now() as server_time');
+        console.log('📊 Database connection successful:', {
+          version: result.rows[0].version.split(' ')[1],
+          database: result.rows[0].current_database,
+          user: result.rows[0].current_user,
+          serverTime: result.rows[0].server_time,
+          ssl: process.env.NODE_ENV === 'production' ? 'enabled' : 'disabled'
+        });
+        
+        client.release();
+        this.isConnected = true;
+        console.log('✅ Connected to PostgreSQL database successfully');
+        return;
+        
+      } catch (error) {
+        lastError = error as Error;
+        console.error(`❌ Database connection attempt ${attempt} failed:`, error);
+        
+        if (attempt < retries) {
+          const delay = attempt * 2000; // Exponential backoff
+          console.log(`⏳ Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
     }
+
+    // All attempts failed
+    console.error('❌ All database connection attempts failed');
+    console.error('💡 Connection troubleshooting info:', {
+      ssl: process.env.NODE_ENV === 'production' ? 'enabled (rejectUnauthorized: false)' : 'disabled',
+      hasConnectionString: !!process.env.DATABASE_URL,
+      nodeEnv: process.env.NODE_ENV,
+      connectionStringFormat: process.env.DATABASE_URL ? 
+        process.env.DATABASE_URL.replace(/:\/\/[^:]+:[^@]+@/, '://***:***@') : 'missing',
+      lastError: lastError.message,
+      errorCode: (lastError as any).code
+    });
+    
+    this.isConnected = false;
+    throw lastError;
   }
 
   async disconnect(): Promise<void> {
@@ -111,7 +161,7 @@ class DatabaseService {
       this.isConnected = false;
       console.log('🔌 Disconnected from database');
     } catch (error) {
-      console.error('Error disconnecting from database:', error);
+      console.error('❌ Error disconnecting from database:', error);
       throw error;
     }
   }
