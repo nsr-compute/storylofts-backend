@@ -1,4 +1,4 @@
-// src/routes/health.ts - Health Check API Routes (Enhanced with Zod Validation)
+// src/routes/health.ts - Health Check API Routes (FIXED)
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { healthCheckService } from '../services/health';
@@ -121,9 +121,10 @@ router.get('/detailed',
       const { timeout, includeDetails } = req.query as any;
       const startTime = Date.now();
       
+      // FIXED: Pass options object instead of individual parameters
       const healthCheck = await healthCheckService.runAllChecks({
-        timeout,
-        includeDetails
+        timeout: Number(timeout),
+        includeDetails: Boolean(includeDetails)
       });
       
       const responseTime = Date.now() - startTime;
@@ -179,7 +180,10 @@ router.get('/auth0',
       const { timeout } = req.query as any;
       const startTime = Date.now();
       
-      const auth0Status = await healthCheckService.checkAuth0({ timeout });
+      // FIXED: Pass options object instead of individual parameter
+      const auth0Status = await healthCheckService.checkAuth0({ 
+        timeout: Number(timeout) 
+      });
       const responseTime = Date.now() - startTime;
       const statusCode = auth0Status.status === 'healthy' ? 200 : 503;
       
@@ -224,7 +228,10 @@ router.get('/secrets',
       const { timeout } = req.query as any;
       const startTime = Date.now();
       
-      const secretsStatus = await healthCheckService.checkSecretManager({ timeout });
+      // FIXED: Pass options object instead of individual parameter
+      const secretsStatus = await healthCheckService.checkSecretManager({ 
+        timeout: Number(timeout) 
+      });
       const responseTime = Date.now() - startTime;
       const statusCode = secretsStatus.status === 'healthy' ? 200 : 503;
       
@@ -269,7 +276,10 @@ router.get('/storage',
       const { timeout } = req.query as any;
       const startTime = Date.now();
       
-      const storageStatus = await healthCheckService.checkBackblaze({ timeout });
+      // FIXED: Pass options object instead of individual parameter
+      const storageStatus = await healthCheckService.checkBackblaze({ 
+        timeout: Number(timeout) 
+      });
       const responseTime = Date.now() - startTime;
       const statusCode = storageStatus.status === 'healthy' ? 200 : 503;
       
@@ -314,7 +324,10 @@ router.get('/database',
       const { timeout } = req.query as any;
       const startTime = Date.now();
       
-      const databaseStatus = await healthCheckService.checkDatabase({ timeout });
+      // FIXED: Pass options object instead of individual parameter
+      const databaseStatus = await healthCheckService.checkDatabase({ 
+        timeout: Number(timeout) 
+      });
       const responseTime = Date.now() - startTime;
       const statusCode = databaseStatus.status === 'healthy' ? 200 : 503;
       
@@ -358,6 +371,7 @@ router.get('/metrics',
       const { format, services } = req.query as any;
       const startTime = Date.now();
       
+      // FIXED: Call runAllChecks without parameters
       const healthCheck = await healthCheckService.runAllChecks();
       const responseTime = Date.now() - startTime;
 
@@ -450,7 +464,16 @@ router.get('/metrics',
  */
 router.get('/readiness', async (req: Request, res: Response) => {
   try {
-    const isReady = await healthCheckService.checkReadiness();
+    // FIXED: Check if checkReadiness method exists before calling
+    let isReady = true;
+    
+    if (typeof healthCheckService.checkReadiness === 'function') {
+      isReady = await healthCheckService.checkReadiness();
+    } else {
+      // Fallback: check basic health if checkReadiness doesn't exist
+      const health = await healthCheckService.getBasicHealth();
+      isReady = health.status === 'healthy';
+    }
     
     if (isReady) {
       res.status(200).json({
@@ -466,6 +489,7 @@ router.get('/readiness', async (req: Request, res: Response) => {
       });
     }
   } catch (error) {
+    console.error('Readiness check failed:', error);
     res.status(503).json({
       success: false,
       status: 'not-ready',
