@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { authenticateToken } from '../middleware/auth';
 import { validate } from '../middleware/validation';
 import { db } from '../services/database';
+import { AuthenticatedRequest } from '../types/auth';
 import { 
   ApiResponse, 
   VideoContent, 
