@@ -1,4 +1,4 @@
-// src/routes/content.ts - StoryLofts Content Management Routes (Migrated to New Zod System)
+// src/routes/content.ts - StoryLofts Content Management Routes (FIXED)
 import { Router, Response } from 'express';
 import { z } from 'zod';
 import { authenticateToken } from '../middleware/auth';
@@ -179,8 +179,8 @@ router.get('/',
       // req.query is now validated and typed
       const options: VideoListOptions = req.query as any;
 
-      // Get user ID from token if authenticated
-      const userId = req.user?.sub;
+      // FIXED: Handle optional authentication
+      const userId = req.user?.sub || undefined;
 
       const result = await db.listVideoContent(userId, options);
 
@@ -220,7 +220,8 @@ router.get('/search',
   validate(searchQuerySchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const userId = req.user?.sub;
+      // FIXED: Handle optional authentication
+      const userId = req.user?.sub || undefined;
       const searchOptions = req.query as any;
 
       const result = await db.searchVideoContent(userId, searchOptions);
@@ -260,7 +261,17 @@ router.get('/stats',
   authenticateToken,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const userId = req.user!.sub;
+      // FIXED: Proper null checking
+      if (!req.user?.sub) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Authentication required',
+          message: 'You must be logged in to view content statistics'
+        };
+        return res.status(401).json(response);
+      }
+
+      const userId = req.user.sub;
       const stats = await db.getUserContentStats(userId);
 
       const response: ApiResponse = {
@@ -292,7 +303,8 @@ router.get('/:id',
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const userId = req.user?.sub; // Optional for public content
+      // FIXED: Handle optional authentication
+      const userId = req.user?.sub || undefined;
 
       const content = await db.getVideoContent(id, userId);
 
@@ -350,7 +362,17 @@ router.post('/',
   validate(createVideoContentSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const userId = req.user!.sub;
+      // FIXED: Proper null checking
+      if (!req.user?.sub) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Authentication required',
+          message: 'You must be logged in to create content'
+        };
+        return res.status(401).json(response);
+      }
+
+      const userId = req.user.sub;
       const contentInput = {
         ...req.body,
         userId
@@ -409,8 +431,18 @@ router.put('/:id',
   validate(updateVideoContentSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // FIXED: Proper null checking
+      if (!req.user?.sub) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Authentication required',
+          message: 'You must be logged in to update content'
+        };
+        return res.status(401).json(response);
+      }
+
       const { id } = req.params;
-      const userId = req.user!.sub;
+      const userId = req.user.sub;
 
       // Check if there's anything to update
       if (Object.keys(req.body).length === 0) {
@@ -473,8 +505,18 @@ router.delete('/:id',
   validate(videoIdParamsSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // FIXED: Proper null checking
+      if (!req.user?.sub) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Authentication required',
+          message: 'You must be logged in to delete content'
+        };
+        return res.status(401).json(response);
+      }
+
       const { id } = req.params;
-      const userId = req.user!.sub;
+      const userId = req.user.sub;
 
       const deleted = await db.deleteVideoContent(id, userId);
 
@@ -563,6 +605,16 @@ router.post('/meta/tags',
   validate(createTagSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // FIXED: Proper null checking
+      if (!req.user?.sub) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Authentication required',
+          message: 'You must be logged in to create tags'
+        };
+        return res.status(401).json(response);
+      }
+
       const { name, color, description } = req.body;
       
       try {
@@ -615,8 +667,18 @@ router.put('/bulk/visibility',
   validate(bulkVisibilityUpdateSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // FIXED: Proper null checking
+      if (!req.user?.sub) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Authentication required',
+          message: 'You must be logged in to update content visibility'
+        };
+        return res.status(401).json(response);
+      }
+
       const { videoIds, visibility } = req.body;
-      const userId = req.user!.sub;
+      const userId = req.user.sub;
 
       // This would need to be implemented in the database service
       // const results = await db.bulkUpdateVisibility(videoIds, userId, visibility);
@@ -649,8 +711,18 @@ router.delete('/bulk',
   validate(bulkDeleteSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // FIXED: Proper null checking
+      if (!req.user?.sub) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Authentication required',
+          message: 'You must be logged in to delete content'
+        };
+        return res.status(401).json(response);
+      }
+
       const { videoIds } = req.body;
-      const userId = req.user!.sub;
+      const userId = req.user.sub;
 
       // This would need to be implemented in the database service
       // const deleteCount = await db.bulkDeleteVideoContent(videoIds, userId);
