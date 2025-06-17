@@ -7,6 +7,7 @@ import { validate } from '../middleware/validation';
 import { backblazeService } from '../services/backblaze';
 import { db } from '../services/database';
 import { config } from '../config';
+import { AuthenticatedRequest } from '../types/auth';
 import { 
   AuthenticatedRequest, 
   ApiResponse, 
