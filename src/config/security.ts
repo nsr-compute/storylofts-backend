@@ -74,6 +74,8 @@ export const getHelmetConfig = () => {
     
     // XSS Protection
     xssFilter: true,
+    
+    // NOTE: expectCt has been REMOVED - deprecated in Helmet v7+
   })
 }
 
