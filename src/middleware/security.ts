@@ -1,13 +1,12 @@
-// Install security packages
-// npm install helmet cors
-
 // src/middleware/security.ts
 import helmet from 'helmet'
 import cors from 'cors'
+import rateLimit from 'express-rate-limit'
 import { Application } from 'express'
 
+// FIXED: Remove expectCt and properly configure middleware
 export const configureSecurityMiddleware = (app: Application) => {
-  // Helmet for security headers
+  // Helmet for security headers - FIXED: Removed expectCt
   app.use(helmet({
     // Content Security Policy
     contentSecurityPolicy: {
@@ -17,25 +16,27 @@ export const configureSecurityMiddleware = (app: Application) => {
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         imgSrc: ["'self'", "data:", "https:"],
         scriptSrc: ["'self'"],
-        connectSrc: ["'self'", "https://api.storylofts.com"],
+        connectSrc: ["'self'", "https://api.storylofts.com", "https://*.auth0.com"],
         frameSrc: ["'none'"],
         objectSrc: ["'none'"],
         upgradeInsecureRequests: [],
       },
     },
     // Cross-Origin Embedder Policy
-    crossOriginEmbedderPolicy: { policy: "credentialless" },
+    crossOriginEmbedderPolicy: false, // Changed to false for video content compatibility
     // Cross-Origin Opener Policy
     crossOriginOpenerPolicy: { policy: "same-origin" },
     // Cross-Origin Resource Policy
     crossOriginResourcePolicy: { policy: "cross-origin" },
     // DNS Prefetch Control
     dnsPrefetchControl: { allow: false },
-    // Expect-CT
-    expectCt: {
-      enforce: true,
-      maxAge: 30 * 24 * 60 * 60, // 30 days
-    },
+    
+    // REMOVED: expectCt is deprecated in Helmet v7+
+    // expectCt: {
+    //   enforce: true,
+    //   maxAge: 30 * 24 * 60 * 60, // 30 days
+    // },
+    
     // Frame Guard
     frameguard: { action: 'deny' },
     // Hide X-Powered-By
@@ -60,7 +61,7 @@ export const configureSecurityMiddleware = (app: Application) => {
     xssFilter: true,
   }))
 
-  // CORS configuration
+  // CORS configuration - FIXED: Proper error handling
   const corsOptions = {
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
       // Allow requests with no origin (mobile apps, etc.)
@@ -72,7 +73,9 @@ export const configureSecurityMiddleware = (app: Application) => {
         callback(null, true)
       } else {
         console.warn(`CORS blocked origin: ${origin}`)
-        callback(new Error('Not allowed by CORS'), false)
+        const error = new Error('Not allowed by CORS')
+        error.name = 'CorsError'
+        callback(error, false)
       }
     },
     credentials: true,
@@ -126,15 +129,14 @@ const getAllowedOrigins = (): string[] => {
   return baseOrigins
 }
 
-// Rate limiting middleware
-import rateLimit from 'express-rate-limit'
-
+// Rate limiting middleware - FIXED: Proper rateLimit usage
 export const configureRateLimiting = (app: Application) => {
   // General API rate limiting
   const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 1000, // Limit each IP to 1000 requests per windowMs
     message: {
+      success: false,
       error: 'Too many requests from this IP, please try again later.',
       retryAfter: Math.ceil(15 * 60) // 15 minutes in seconds
     },
@@ -151,6 +153,7 @@ export const configureRateLimiting = (app: Application) => {
     windowMs: 60 * 60 * 1000, // 1 hour
     max: 50, // Limit each IP to 50 upload requests per hour
     message: {
+      success: false,
       error: 'Upload rate limit exceeded, please try again later.',
       retryAfter: Math.ceil(60 * 60) // 1 hour in seconds
     },
@@ -163,6 +166,7 @@ export const configureRateLimiting = (app: Application) => {
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 20, // Limit each IP to 20 auth requests per 15 minutes
     message: {
+      success: false,
       error: 'Too many authentication attempts, please try again later.',
       retryAfter: Math.ceil(15 * 60)
     },
@@ -176,12 +180,26 @@ export const configureRateLimiting = (app: Application) => {
   app.use('/api/auth', authLimiter)
 }
 
-// Updated server.ts integration
-// src/server.ts (partial update)
-import { configureSecurityMiddleware, configureRateLimiting } from './middleware/security'
+// Export additional middlewares that were missing in server.ts
+export const uploadSecurityMiddleware = () => {
+  return rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 20, // Limit uploads
+    message: {
+      success: false,
+      error: 'Upload rate limit exceeded'
+    },
+    standardHeaders: true,
+    legacyHeaders: false
+  })
+}
 
-// Apply security middleware early in the stack
-configureSecurityMiddleware(app)
-configureRateLimiting(app)
-
-// ... rest of your middleware and routes
+export const logSecurityEvent = (event: any) => {
+  console.log('🔒 Security Event:', {
+    timestamp: new Date().toISOString(),
+    type: event.type || 'unknown',
+    ip: event.ip,
+    userAgent: event.userAgent,
+    details: event.details
+  })
+}
