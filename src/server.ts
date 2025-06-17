@@ -1,237 +1,316 @@
-// src/server.ts - StoryLofts ContentHive API Server
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import compression from 'compression';
-import rateLimit from 'express-rate-limit';
-import { configService } from './config';
-import { db } from './services/database';
-import { healthService } from './services/health';
+// src/server.ts - StoryLofts ContentHive API Server (Production-Ready)
+import express from 'express'
+import compression from 'compression'
+import { configService } from './config'
+import { db } from './services/database'
+import { healthService } from './services/health'
+
+// Import security configurations
+import { 
+  getHelmetConfig, 
+  getCorsConfig, 
+  getRateLimitConfigs,
+  requestIdMiddleware,
+  securityHeadersMiddleware,
+  uploadSecurityMiddleware,
+  logSecurityEvent
+} from './config/security'
+
+// Import middleware
+import { errorHandler, notFoundHandler } from './middleware/errorhandler'
+import { authenticateToken } from './middleware/auth'
 
 // Import routes
-import contentRoutes from './routes/content';
-import uploadRoutes from './routes/upload';
-import healthRoutes from './routes/health';
+import contentRoutes from './routes/content'
+import uploadRoutes from './routes/upload'
+import healthRoutes from './routes/health'
 
-const app = express();
-const config = configService.getConfig();
+// ============================================================================
+// APPLICATION SETUP
+// ============================================================================
 
-// Trust proxy (important for DigitalOcean App Platform)
-app.set('trust proxy', 1);
+const app = express()
+const config = configService.getConfig()
 
-// Security middleware
-app.use(helmet({
-  crossOriginEmbedderPolicy: false,
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https://api.storylofts.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-    },
-  },
-}));
+// Trust proxy (critical for DigitalOcean App Platform)
+app.set('trust proxy', 1)
 
-// CORS configuration for StoryLofts
-const corsOptions = {
-  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-    const allowedOrigins = [
-      config.frontend.url,
-      'https://storylofts.com',
-      'https://www.storylofts.com',
-      'https://app.storylofts.com'
-    ];
-    
-    // Allow development origins
-    if (config.environment === 'development') {
-      allowedOrigins.push(
-        'http://localhost:3000',
-        'http://127.0.0.1:3000',
-        'http://localhost:3001',
-        'http://localhost:8080'
-      );
-    }
-    
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn(`CORS: Blocked origin ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: [
-    'Content-Type', 
-    'Authorization', 
-    'X-Requested-With',
-    'X-API-Key',
-    'X-Upload-Session-Id'
-  ]
-};
+// Disable X-Powered-By for security
+app.disable('x-powered-by')
 
-app.use(cors(corsOptions));
+console.log(`🚀 Initializing StoryLofts ContentHive API v1.0.0`)
+console.log(`🌍 Environment: ${config.environment}`)
+console.log(`🔗 Frontend URL: ${config.frontend.url}`)
 
-// Body parsing middleware
-app.use(compression());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// ============================================================================
+// SECURITY MIDDLEWARE (Applied Early)
+// ============================================================================
 
-// Rate limiting
-const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: {
-    success: false,
-    error: 'Too many requests from this IP, please try again later.',
-    retryAfter: '15 minutes'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: (req) => {
-    // Skip rate limiting for health checks
-    return req.path.startsWith('/health');
+// Request tracking
+app.use(requestIdMiddleware)
+
+// Security headers
+app.use(getHelmetConfig())
+app.use(getCorsConfig())
+app.use(securityHeadersMiddleware)
+
+// Body parsing with security limits
+app.use(compression())
+app.use(express.json({ 
+  limit: '10mb',
+  verify: (req: any, res, buf) => {
+    // Store raw body for webhook verification if needed
+    req.rawBody = buf
   }
-});
+}))
+app.use(express.urlencoded({ 
+  extended: true, 
+  limit: '10mb' 
+}))
 
-const uploadLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 20, // limit each IP to 20 upload requests per hour
-  message: {
-    success: false,
-    error: 'Too many upload requests from this IP, please try again later.',
-    retryAfter: '1 hour'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// ============================================================================
+// RATE LIMITING
+// ============================================================================
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // limit each IP to 50 auth requests per windowMs
-  message: {
-    success: false,
-    error: 'Too many authentication attempts, please try again later.',
-    retryAfter: '15 minutes'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+const rateLimits = getRateLimitConfigs()
 
-// Apply rate limiting
-app.use(generalLimiter);
-app.use('/api/upload', uploadLimiter);
-app.use('/api/auth', authLimiter);
-
-// Request logging middleware
+// Apply rate limiting with smart skip logic
 app.use((req, res, next) => {
-  const timestamp = new Date().toISOString();
-  const userAgent = req.get('User-Agent') || 'Unknown';
-  const method = req.method;
-  const path = req.path;
-  const ip = req.ip;
-  
-  // Log requests (exclude health checks in production to reduce noise)
-  if (config.environment === 'development' || !req.path.startsWith('/health')) {
-    console.log(`${timestamp} ${method} ${path} - IP: ${ip} - UA: ${userAgent.substring(0, 50)}`);
+  // Skip rate limiting for health checks and static assets
+  if (req.path.startsWith('/health') || 
+      req.path.startsWith('/favicon') ||
+      req.path === '/') {
+    return next()
   }
   
-  next();
-});
+  return rateLimits.general(req, res, next)
+})
 
-// Routes
-app.use('/health', healthRoutes);
-app.use('/api/content', contentRoutes);
-app.use('/api/upload', uploadRoutes);
+// Specific rate limits for different endpoints
+app.use('/api/upload', rateLimits.upload)
+app.use('/api/auth', rateLimits.auth)
+app.use('/api/content/search', rateLimits.search)
+app.use('/api/content', (req, res, next) => {
+  // Apply content modification rate limit only for POST/PUT/DELETE
+  if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
+    return rateLimits.contentModification(req, res, next)
+  }
+  next()
+})
 
-// API documentation endpoint
+// Upload-specific security middleware
+app.use('/api/upload', uploadSecurityMiddleware)
+
+// ============================================================================
+// REQUEST LOGGING
+// ============================================================================
+
+app.use((req, res, next) => {
+  const timestamp = new Date().toISOString()
+  const method = req.method
+  const path = req.path
+  const ip = req.ip
+  const userAgent = req.get('User-Agent') || 'Unknown'
+  const requestId = req.requestId
+
+  // Enhanced logging with user context
+  const logData = {
+    timestamp,
+    requestId,
+    method,
+    path,
+    ip,
+    userAgent: userAgent.substring(0, 100),
+    query: Object.keys(req.query).length > 0 ? req.query : undefined,
+    contentLength: req.get('Content-Length'),
+    origin: req.get('Origin')
+  }
+
+  // Log requests (exclude health checks in production to reduce noise)
+  if (config.environment === 'development' || 
+      (!req.path.startsWith('/health') && !req.path.startsWith('/favicon'))) {
+    console.log(`📥 REQUEST: ${method} ${path}`, logData)
+  }
+  
+  // Add response time tracking
+  const startTime = Date.now()
+  res.on('finish', () => {
+    const duration = Date.now() - startTime
+    const statusCode = res.statusCode
+    
+    // Log slow requests or errors
+    if (config.environment === 'development' || 
+        duration > 1000 || 
+        statusCode >= 400) {
+      console.log(`📤 RESPONSE: ${method} ${path} - ${statusCode} - ${duration}ms`, {
+        requestId,
+        statusCode,
+        duration,
+        contentLength: res.get('Content-Length')
+      })
+    }
+    
+    // Log security events
+    if (statusCode === 429) {
+      logSecurityEvent('Rate limit exceeded', { ip, path, userAgent })
+    } else if (statusCode === 403) {
+      logSecurityEvent('Access forbidden', { ip, path, userAgent })
+    } else if (statusCode === 401) {
+      logSecurityEvent('Unauthorized access attempt', { ip, path, userAgent })
+    }
+  })
+  
+  next()
+})
+
+// ============================================================================
+// API ROUTES
+// ============================================================================
+
+// Health checks (no authentication required)
+app.use('/health', healthRoutes)
+
+// Content API (authentication required for most endpoints)
+app.use('/api/content', contentRoutes)
+
+// Upload API (authentication required)
+app.use('/api/upload', authenticateToken, uploadRoutes)
+
+// ============================================================================
+// API DOCUMENTATION & STATUS
+// ============================================================================
+
+// Enhanced API documentation
 app.get('/api/docs', (req, res) => {
   const docs = {
     title: 'StoryLofts ContentHive API',
     version: '1.0.0',
-    description: 'Professional video content platform API - Vimeo for professionals',
+    description: 'Professional video content platform API - Built for creators, professionals, and teams',
     baseUrl: config.api.baseUrl,
-    authentication: {
-      type: 'Bearer token (Auth0 JWT)',
-      header: 'Authorization: Bearer <token>',
-      endpoint: 'https://storylofts.auth0.com'
+    environment: config.environment,
+    
+    security: {
+      authentication: {
+        type: 'Bearer token (Auth0 JWT)',
+        header: 'Authorization: Bearer <token>',
+        provider: 'Auth0',
+        audience: config.auth.audience
+      },
+      
+      rateLimit: {
+        general: config.environment === 'development' ? '2000 requests per 15 minutes' : '200 requests per 15 minutes',
+        uploads: config.environment === 'development' ? '500 requests per hour' : '50 requests per hour',
+        authentication: config.environment === 'development' ? '200 requests per 15 minutes' : '20 requests per 15 minutes',
+        search: config.environment === 'development' ? '300 requests per minute' : '30 requests per minute',
+        contentModification: config.environment === 'development' ? '200 requests per minute' : '20 requests per minute'
+      },
+      
+      cors: {
+        allowedOrigins: config.environment === 'development' 
+          ? ['https://storylofts.com', 'http://localhost:3000', 'and more...'] 
+          : ['https://storylofts.com', 'https://www.storylofts.com', 'https://app.storylofts.com'],
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH']
+      },
+      
+      headers: [
+        'Content-Security-Policy',
+        'X-Content-Type-Options: nosniff',
+        'X-Frame-Options: DENY',
+        'X-XSS-Protection: 1; mode=block',
+        'Strict-Transport-Security (production only)',
+        'Referrer-Policy: strict-origin-when-cross-origin'
+      ]
     },
+    
     endpoints: {
       health: {
         'GET /health': 'Basic health check',
-        'GET /health/detailed': 'Detailed system health including database',
-        'GET /health/auth0': 'Auth0 service health check',
-        'GET /health/storage': 'Backblaze B2 storage health check',
-        'GET /health/database': 'PostgreSQL database health check'
+        'GET /health/detailed': 'Detailed system health (database, storage, auth)',
+        'GET /health/database': 'PostgreSQL database health',
+        'GET /health/storage': 'Backblaze B2 storage health',
+        'GET /health/auth0': 'Auth0 authentication service health'
       },
+      
       content: {
-        'GET /api/content': 'List video content with pagination and filtering',
-        'GET /api/content/:id': 'Get specific video content by ID',
-        'POST /api/content': 'Create new video content (authentication required)',
-        'PUT /api/content/:id': 'Update video content (authentication + ownership required)',
-        'DELETE /api/content/:id': 'Delete video content (authentication + ownership required)',
-        'GET /api/content/meta/tags': 'Get available professional tags',
-        'POST /api/content/meta/tags': 'Create new content tag (authentication required)'
+        'GET /api/content': 'List video content (public) or user content (authenticated)',
+        'GET /api/content/:id': 'Get specific video by ID',
+        'POST /api/content': 'Create new video content (authenticated)',
+        'PUT /api/content/:id': 'Update video content (authenticated + ownership)',
+        'DELETE /api/content/:id': 'Delete video content (authenticated + ownership)',
+        'GET /api/content/search': 'Search videos with full-text search',
+        'GET /api/content/stats': 'User content statistics (authenticated)',
+        'GET /api/content/meta/tags': 'Get available content tags'
       },
+      
       upload: {
-        'POST /api/upload/url': 'Get pre-signed upload URL for Backblaze B2 (auth required)',
-        'POST /api/upload/direct': 'Direct file upload to Backblaze B2 (auth required)',
-        'POST /api/upload/complete': 'Complete upload process and create content record (auth required)'
+        'POST /api/upload/url': 'Get pre-signed upload URL (authenticated)',
+        'POST /api/upload/complete': 'Complete upload and create content record (authenticated)',
+        'GET /api/upload/status/:id': 'Check upload status (authenticated)'
       }
     },
+    
     parameters: {
       pagination: {
         page: 'Page number (default: 1, min: 1)',
         limit: 'Items per page (default: 20, max: 100)'
       },
+      
       filtering: {
-        status: 'uploading | processing | ready | failed',
+        status: 'uploading | processing | completed | failed',
         visibility: 'public | private | unlisted',
-        tags: 'Comma-separated tag names (e.g., "business,marketing")',
-        search: 'Search in title and description (full-text search)'
+        tags: 'Comma-separated tag names',
+        search: 'Full-text search in title and description',
+        createdAfter: 'ISO datetime filter',
+        createdBefore: 'ISO datetime filter'
       },
+      
       sorting: {
-        sortBy: 'created_at | updated_at | title | duration',
+        sortBy: 'created_at | updated_at | title | duration | file_size',
         sortOrder: 'asc | desc (default: desc)'
       }
     },
+    
     examples: {
-      'List public content': 'GET /api/content?visibility=public&page=1&limit=10',
-      'Search business videos': 'GET /api/content?search=tutorial&tags=business,training',
-      'Get user content': 'GET /api/content?page=1&limit=20 (with Authorization header)',
+      'List public content': `GET ${config.api.baseUrl}/api/content?visibility=public&page=1&limit=10`,
+      'Search business videos': `GET ${config.api.baseUrl}/api/content/search?q=tutorial&tags=business,training`,
+      'Get user content': `GET ${config.api.baseUrl}/api/content (with Authorization header)`,
       'Upload workflow': [
-        '1. POST /api/upload/url - Get pre-signed upload URL',
-        '2. PUT to upload URL - Upload file directly to Backblaze B2',
-        '3. POST /api/upload/complete - Complete upload and create content record'
+        '1. POST /api/upload/url - Get pre-signed URL and video ID',
+        '2. PUT <pre-signed-url> - Upload file directly to Backblaze B2',
+        '3. POST /api/upload/complete - Complete upload with metadata'
       ]
     },
-    rateLimit: {
-      general: '100 requests per 15 minutes',
-      uploads: '20 requests per hour',
-      authentication: '50 requests per 15 minutes'
-    },
+    
     errorCodes: {
-      400: 'Bad Request - Invalid input data',
-      401: 'Unauthorized - Missing or invalid authentication',
-      403: 'Forbidden - Insufficient permissions',
+      400: 'Bad Request - Invalid input data or validation error',
+      401: 'Unauthorized - Missing, invalid, or expired authentication',
+      403: 'Forbidden - Insufficient permissions or CORS violation',
       404: 'Not Found - Resource does not exist',
+      409: 'Conflict - Resource already exists or constraint violation',
+      413: 'Payload Too Large - File size exceeds limits',
+      422: 'Unprocessable Entity - Valid syntax but semantic errors',
       429: 'Too Many Requests - Rate limit exceeded',
-      500: 'Internal Server Error - Server malfunction'
+      500: 'Internal Server Error - Unexpected server error',
+      502: 'Bad Gateway - Upstream service error',
+      503: 'Service Unavailable - Server temporarily unavailable'
+    },
+    
+    supportedFormats: {
+      video: ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.3gp', '.flv'],
+      maxFileSize: '2GB',
+      maxDuration: '24 hours'
     }
-  };
+  }
   
-  res.json(docs);
-});
+  res.json(docs)
+})
 
-// API status endpoint
+// API status endpoint with comprehensive health info
 app.get('/api/status', async (req, res) => {
   try {
-    const health = await healthService.getDetailedHealth();
+    const health = await healthService.getDetailedHealth()
+    const uptime = process.uptime()
     
     res.json({
       name: 'StoryLofts ContentHive API',
@@ -239,37 +318,64 @@ app.get('/api/status', async (req, res) => {
       status: health.status,
       environment: config.environment,
       timestamp: new Date().toISOString(),
-      uptime: health.uptime,
-      services: {
-        database: health.services.database.status,
-        storage: health.services.storage.status,
-        auth: health.services.auth0.status
+      uptime: {
+        seconds: Math.floor(uptime),
+        human: formatUptime(uptime)
       },
+      
+      services: {
+        database: {
+          status: health.services.database.status,
+          responseTime: health.services.database.responseTime
+        },
+        storage: {
+          status: health.services.storage.status,
+          responseTime: health.services.storage.responseTime
+        },
+        auth: {
+          status: health.services.auth0.status,
+          responseTime: health.services.auth0.responseTime
+        }
+      },
+      
+      system: {
+        nodeVersion: process.version,
+        platform: process.platform,
+        memory: {
+          used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
+          total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + 'MB'
+        },
+        cpu: process.cpuUsage()
+      },
+      
       endpoints: {
-        docs: `${config.api.baseUrl}/api/docs`,
+        documentation: `${config.api.baseUrl}/api/docs`,
         health: `${config.api.baseUrl}/health/detailed`,
         content: `${config.api.baseUrl}/api/content`,
         upload: `${config.api.baseUrl}/api/upload`
       }
-    });
+    })
   } catch (error) {
+    console.error('❌ Status endpoint error:', error)
     res.status(500).json({
       name: 'StoryLofts ContentHive API',
       status: 'error',
-      error: 'Failed to retrieve status'
-    });
+      error: 'Failed to retrieve system status',
+      timestamp: new Date().toISOString()
+    })
   }
-});
+})
 
-// Root endpoint
+// Root endpoint with API information
 app.get('/', (req, res) => {
   res.json({
     name: 'StoryLofts ContentHive API',
     version: '1.0.0',
-    description: 'Professional video content platform - Vimeo for professionals, not YouTube for everyone',
+    description: 'Professional video content platform - Built for creators, professionals, and teams',
     status: 'operational',
     environment: config.environment,
     timestamp: new Date().toISOString(),
+    
     links: {
       documentation: `${config.api.baseUrl}/api/docs`,
       status: `${config.api.baseUrl}/api/status`,
@@ -277,12 +383,28 @@ app.get('/', (req, res) => {
       content: `${config.api.baseUrl}/api/content`,
       upload: `${config.api.baseUrl}/api/upload`
     },
+    
     support: {
       website: 'https://storylofts.com',
-      repository: 'https://github.com/nsr-compute/storylofts-backend'
-    }
-  });
-});
+      repository: 'https://github.com/nsr-compute/storylofts-backend',
+      documentation: `${config.api.baseUrl}/api/docs`
+    },
+    
+    features: [
+      'Professional video content management',
+      'Secure file upload to Backblaze B2',
+      'Full-text search and advanced filtering',
+      'User analytics and insights',
+      'Auth0 JWT authentication',
+      'Rate limiting and security headers',
+      'Comprehensive health monitoring'
+    ]
+  })
+})
+
+// ============================================================================
+// ERROR HANDLING
+// ============================================================================
 
 // 404 handler for API routes
 app.use('/api/*', (req, res) => {
@@ -291,116 +413,129 @@ app.use('/api/*', (req, res) => {
     error: 'API endpoint not found',
     message: `The endpoint ${req.method} ${req.originalUrl} does not exist`,
     suggestion: 'Check the API documentation for available endpoints',
-    documentation: `${config.api.baseUrl}/api/docs`
-  });
-});
+    documentation: `${config.api.baseUrl}/api/docs`,
+    timestamp: new Date().toISOString(),
+    requestId: req.requestId
+  })
+})
 
 // General 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    error: 'Resource not found',
-    message: `The resource ${req.method} ${req.originalUrl} was not found`,
-    api: {
-      documentation: `${config.api.baseUrl}/api/docs`,
-      status: `${config.api.baseUrl}/api/status`
-    }
-  });
-});
+app.use(notFoundHandler)
 
-// Global error handler
-app.use((error: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Global error handler:', {
-    error: error.message,
-    stack: error.stack,
-    url: req.originalUrl,
-    method: req.method,
-    ip: req.ip,
-    userAgent: req.get('User-Agent')
-  });
-  
-  // Don't leak error details in production
-  const isDevelopment = config.environment === 'development';
-  
-  res.status(500).json({
-    success: false,
-    error: 'Internal server error',
-    message: isDevelopment ? error.message : 'Something went wrong on our end',
-    stack: isDevelopment ? error.stack : undefined,
-    timestamp: new Date().toISOString(),
-    requestId: req.ip + '-' + Date.now()
-  });
-});
+// Global error handler (must be last)
+app.use(errorHandler)
 
-// Database connection and server startup
+// ============================================================================
+// SERVER STARTUP & SHUTDOWN
+// ============================================================================
+
 async function startServer() {
   try {
-    console.log('🚀 Starting StoryLofts ContentHive API...');
+    console.log('🚀 Starting StoryLofts ContentHive API...')
     
-    // Connect to PostgreSQL database first
-    console.log('🔌 Connecting to PostgreSQL database...');
-    await db.connect();
-    console.log('✅ Database connected successfully');
+    // Connect to PostgreSQL database
+    console.log('🔌 Connecting to PostgreSQL database...')
+    await db.connect()
+    console.log('✅ Database connected successfully')
+    
+    // Verify external services
+    console.log('🔍 Verifying external services...')
+    const health = await healthService.getDetailedHealth()
+    console.log('📊 Service status:', {
+      database: health.services.database.status,
+      storage: health.services.storage.status,
+      auth: health.services.auth0.status
+    })
     
     // Start HTTP server
-    const port = config.server.port;
+    const port = config.server.port
     const server = app.listen(port, () => {
-      console.log(`🎯 StoryLofts ContentHive API running on port ${port}`);
-      console.log(`📖 Documentation: ${config.api.baseUrl}/api/docs`);
-      console.log(`📊 Status: ${config.api.baseUrl}/api/status`);
-      console.log(`❤️  Health Check: ${config.api.baseUrl}/health/detailed`);
-      console.log(`🌍 Environment: ${config.environment}`);
-      console.log(`🔗 Frontend: ${config.frontend.url}`);
-      console.log('✨ StoryLofts is ready for professional video content!');
-    });
+      console.log('✨ StoryLofts ContentHive API is ready!')
+      console.log(`🎯 Server running on port ${port}`)
+      console.log(`📖 Documentation: ${config.api.baseUrl}/api/docs`)
+      console.log(`📊 API Status: ${config.api.baseUrl}/api/status`)
+      console.log(`❤️  Health Check: ${config.api.baseUrl}/health/detailed`)
+      console.log(`🌍 Environment: ${config.environment}`)
+      console.log(`🔗 Frontend: ${config.frontend.url}`)
+      console.log('🎬 Ready for professional video content management!')
+    })
+
+    // Configure server timeouts
+    server.timeout = 120000 // 2 minutes
+    server.keepAliveTimeout = 65000 // 65 seconds
+    server.headersTimeout = 66000 // 66 seconds
 
     // Graceful shutdown handling
     const gracefulShutdown = async (signal: string) => {
-      console.log(`\n📡 Received ${signal}. Starting graceful shutdown...`);
+      console.log(`\n📡 Received ${signal}. Starting graceful shutdown...`)
       
+      // Stop accepting new connections
       server.close(async () => {
-        console.log('🔒 HTTP server closed');
+        console.log('🔒 HTTP server closed')
         
         try {
-          await db.disconnect();
-          console.log('🔌 Database disconnected');
-          console.log('👋 StoryLofts ContentHive API shutdown completed gracefully');
-          process.exit(0);
+          // Close database connections
+          await db.disconnect()
+          console.log('🔌 Database disconnected')
+          
+          console.log('👋 StoryLofts ContentHive API shutdown completed gracefully')
+          process.exit(0)
         } catch (error) {
-          console.error('❌ Error during shutdown:', error);
-          process.exit(1);
+          console.error('❌ Error during shutdown:', error)
+          process.exit(1)
         }
-      });
+      })
       
-      // Force close server after 30 seconds
+      // Force close after timeout
       setTimeout(() => {
-        console.error('⏰ Could not close connections in time, forcefully shutting down');
-        process.exit(1);
-      }, 30000);
-    };
+        console.error('⏰ Shutdown timeout exceeded, forcing exit')
+        process.exit(1)
+      }, 30000) // 30 seconds
+    }
 
     // Handle shutdown signals
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'))
     
-    // Handle uncaught exceptions
+    // Handle uncaught exceptions and rejections
     process.on('uncaughtException', (error) => {
-      console.error('❌ Uncaught Exception:', error);
-      gracefulShutdown('uncaughtException');
-    });
+      console.error('❌ Uncaught Exception:', error)
+      logSecurityEvent('Uncaught exception', { error: error.message, stack: error.stack })
+      gracefulShutdown('uncaughtException')
+    })
     
     process.on('unhandledRejection', (reason, promise) => {
-      console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-      gracefulShutdown('unhandledRejection');
-    });
+      console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason)
+      logSecurityEvent('Unhandled rejection', { reason, promise })
+      gracefulShutdown('unhandledRejection')
+    })
     
   } catch (error) {
-    console.error('❌ Failed to start StoryLofts ContentHive API:', error);
-    process.exit(1);
+    console.error('❌ Failed to start StoryLofts ContentHive API:', error)
+    process.exit(1)
   }
 }
 
-// Start the server
-startServer();
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
 
-export default app;
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86400)
+  const hours = Math.floor((seconds % 86400) / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const secs = Math.floor(seconds % 60)
+  
+  const parts = []
+  if (days > 0) parts.push(`${days}d`)
+  if (hours > 0) parts.push(`${hours}h`)
+  if (minutes > 0) parts.push(`${minutes}m`)
+  if (secs > 0) parts.push(`${secs}s`)
+  
+  return parts.join(' ') || '0s'
+}
+
+// Start the server
+startServer()
+
+export default app
