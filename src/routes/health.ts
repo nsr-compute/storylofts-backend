@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { healthCheckService } from '../services/health';
 import { validate } from '../middleware/validation';
 import rateLimit from 'express-rate-limit';
+import { AuthenticatedRequest } from '../types/auth';
 
 const router = Router();
 
