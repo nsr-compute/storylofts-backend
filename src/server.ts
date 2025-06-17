@@ -1,4 +1,4 @@
-// src/server.ts - StoryLofts ContentHive API Server (Production-Ready)
+// src/server.ts - StoryLofts ContentHive API Server (Production-Ready with Zod Validation)
 import express from 'express'
 import compression from 'compression'
 import { configService } from './config'
@@ -19,6 +19,7 @@ import {
 // Import middleware
 import { errorHandler, notFoundHandler } from './middleware/errorhandler'
 import { authenticateToken } from './middleware/auth'
+import { validate } from './middleware/validation'
 
 // Import routes
 import contentRoutes from './routes/content'
@@ -180,7 +181,7 @@ app.use('/api/upload', authenticateToken, uploadRoutes)
 // API DOCUMENTATION & STATUS
 // ============================================================================
 
-// Enhanced API documentation
+// Enhanced API documentation with Zod validation details
 app.get('/api/docs', (req, res) => {
   const docs = {
     title: 'StoryLofts ContentHive API',
@@ -188,6 +189,41 @@ app.get('/api/docs', (req, res) => {
     description: 'Professional video content platform API - Built for creators, professionals, and teams',
     baseUrl: config.api.baseUrl,
     environment: config.environment,
+    
+    validation: {
+      library: 'Zod v3.22+',
+      features: [
+        'Type-safe runtime validation',
+        'Automatic TypeScript type inference',
+        'Structured error responses',
+        'Schema composition and reusability',
+        'Async validation support'
+      ],
+      errorFormat: {
+        structure: {
+          success: false,
+          errors: [
+            {
+              path: 'field.path',
+              message: 'Validation error message'
+            }
+          ]
+        },
+        example: {
+          success: false,
+          errors: [
+            {
+              path: 'body.title',
+              message: 'Title must be at least 1 character'
+            },
+            {
+              path: 'params.id',
+              message: 'Invalid UUID format'
+            }
+          ]
+        }
+      }
+    },
     
     security: {
       authentication: {
@@ -233,21 +269,97 @@ app.get('/api/docs', (req, res) => {
       },
       
       content: {
-        'GET /api/content': 'List video content (public) or user content (authenticated)',
-        'GET /api/content/:id': 'Get specific video by ID',
-        'POST /api/content': 'Create new video content (authenticated)',
-        'PUT /api/content/:id': 'Update video content (authenticated + ownership)',
-        'DELETE /api/content/:id': 'Delete video content (authenticated + ownership)',
+        'GET /api/content': {
+          description: 'List video content (public) or user content (authenticated)',
+          validation: {
+            query: {
+              page: 'number (min: 1, default: 1)',
+              limit: 'number (min: 1, max: 100, default: 20)',
+              status: 'enum: uploading | processing | completed | failed',
+              visibility: 'enum: public | private | unlisted',
+              search: 'string (max: 100 chars)',
+              sortBy: 'enum: created_at | updated_at | title | file_size',
+              sortOrder: 'enum: asc | desc'
+            }
+          }
+        },
+        'GET /api/content/:id': {
+          description: 'Get specific video by ID',
+          validation: {
+            params: {
+              id: 'UUID format required'
+            }
+          }
+        },
+        'POST /api/content': {
+          description: 'Create new video content (authenticated)',
+          validation: {
+            body: {
+              title: 'string (1-255 chars, required)',
+              description: 'string (max: 2000 chars, optional)',
+              filename: 'string (valid video extension required)',
+              fileSize: 'number (max: 500MB)',
+              videoUrl: 'valid URL format',
+              visibility: 'enum: public | private | unlisted',
+              tags: 'array of strings (max: 10 tags)',
+              mimeType: 'video MIME type',
+              duration: 'positive number (optional)',
+              thumbnailUrl: 'valid URL (optional)'
+            }
+          }
+        },
+        'PUT /api/content/:id': {
+          description: 'Update video content (authenticated + ownership)',
+          validation: {
+            params: { id: 'UUID format' },
+            body: 'Same as POST but all fields optional'
+          }
+        },
+        'DELETE /api/content/:id': {
+          description: 'Delete video content (authenticated + ownership)',
+          validation: {
+            params: { id: 'UUID format' }
+          }
+        },
         'GET /api/content/search': 'Search videos with full-text search',
         'GET /api/content/stats': 'User content statistics (authenticated)',
         'GET /api/content/meta/tags': 'Get available content tags'
       },
       
       upload: {
-        'POST /api/upload/url': 'Get pre-signed upload URL (authenticated)',
+        'POST /api/upload/url': {
+          description: 'Get pre-signed upload URL (authenticated)',
+          validation: {
+            body: {
+              filename: 'string (valid video extension, max: 255 chars)',
+              fileSize: 'number (max: 500MB)'
+            }
+          }
+        },
         'POST /api/upload/complete': 'Complete upload and create content record (authenticated)',
-        'GET /api/upload/status/:id': 'Check upload status (authenticated)'
+        'GET /api/upload/status/:id': {
+          description: 'Check upload status (authenticated)',
+          validation: {
+            params: { id: 'UUID format' }
+          }
+        }
       }
+    },
+    
+    dataTypes: {
+      supportedVideoFormats: ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.3gp', '.flv'],
+      maxFileSize: '500MB (524,288,000 bytes)',
+      maxDuration: '24 hours',
+      allowedMimeTypes: [
+        'video/mp4',
+        'video/quicktime',
+        'video/x-msvideo',
+        'video/webm',
+        'video/x-matroska',
+        'video/x-m4v',
+        'video/3gpp',
+        'video/x-flv'
+      ]
     },
     
     parameters: {
@@ -260,7 +372,7 @@ app.get('/api/docs', (req, res) => {
         status: 'uploading | processing | completed | failed',
         visibility: 'public | private | unlisted',
         tags: 'Comma-separated tag names',
-        search: 'Full-text search in title and description',
+        search: 'Full-text search in title and description (max: 100 chars)',
         createdAfter: 'ISO datetime filter',
         createdBefore: 'ISO datetime filter'
       },
@@ -275,6 +387,20 @@ app.get('/api/docs', (req, res) => {
       'List public content': `GET ${config.api.baseUrl}/api/content?visibility=public&page=1&limit=10`,
       'Search business videos': `GET ${config.api.baseUrl}/api/content/search?q=tutorial&tags=business,training`,
       'Get user content': `GET ${config.api.baseUrl}/api/content (with Authorization header)`,
+      'Create video content': {
+        url: `POST ${config.api.baseUrl}/api/content`,
+        body: {
+          title: 'My Tutorial Video',
+          description: 'A comprehensive tutorial on video editing',
+          filename: 'tutorial.mp4',
+          fileSize: 157286400,
+          videoUrl: 'https://f005.backblazeb2.com/file/storylofts-content/videos/uuid/tutorial.mp4',
+          visibility: 'public',
+          tags: ['tutorial', 'editing', 'beginner'],
+          mimeType: 'video/mp4',
+          duration: 1800
+        }
+      },
       'Upload workflow': [
         '1. POST /api/upload/url - Get pre-signed URL and video ID',
         '2. PUT <pre-signed-url> - Upload file directly to Backblaze B2',
@@ -283,23 +409,33 @@ app.get('/api/docs', (req, res) => {
     },
     
     errorCodes: {
-      400: 'Bad Request - Invalid input data or validation error',
+      400: {
+        description: 'Bad Request - Invalid input data or validation error',
+        commonCauses: [
+          'Missing required fields',
+          'Invalid data types',
+          'Value out of allowed range',
+          'Invalid file format',
+          'Malformed UUID'
+        ]
+      },
       401: 'Unauthorized - Missing, invalid, or expired authentication',
       403: 'Forbidden - Insufficient permissions or CORS violation',
       404: 'Not Found - Resource does not exist',
       409: 'Conflict - Resource already exists or constraint violation',
       413: 'Payload Too Large - File size exceeds limits',
-      422: 'Unprocessable Entity - Valid syntax but semantic errors',
+      422: {
+        description: 'Unprocessable Entity - Valid syntax but semantic errors',
+        commonCauses: [
+          'Business logic validation failed',
+          'Referenced resource not found',
+          'Invalid state transition'
+        ]
+      },
       429: 'Too Many Requests - Rate limit exceeded',
       500: 'Internal Server Error - Unexpected server error',
-      502: 'Bad Gateway - Upstream service error',
+      502: 'Bad Gateway - Upstream service error (Auth0, Backblaze B2)',
       503: 'Service Unavailable - Server temporarily unavailable'
-    },
-    
-    supportedFormats: {
-      video: ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.3gp', '.flv'],
-      maxFileSize: '2GB',
-      maxDuration: '24 hours'
     }
   }
   
@@ -321,6 +457,12 @@ app.get('/api/status', async (req, res) => {
       uptime: {
         seconds: Math.floor(uptime),
         human: formatUptime(uptime)
+      },
+      
+      validation: {
+        library: 'Zod',
+        version: '3.22+',
+        features: ['Runtime type checking', 'TypeScript integration', 'Schema composition']
       },
       
       services: {
@@ -376,6 +518,11 @@ app.get('/', (req, res) => {
     environment: config.environment,
     timestamp: new Date().toISOString(),
     
+    validation: {
+      library: 'Zod',
+      features: ['Type-safe validation', 'Runtime type checking', 'Schema composition']
+    },
+    
     links: {
       documentation: `${config.api.baseUrl}/api/docs`,
       status: `${config.api.baseUrl}/api/status`,
@@ -396,6 +543,7 @@ app.get('/', (req, res) => {
       'Full-text search and advanced filtering',
       'User analytics and insights',
       'Auth0 JWT authentication',
+      'Zod runtime validation with TypeScript integration',
       'Rate limiting and security headers',
       'Comprehensive health monitoring'
     ]
@@ -422,7 +570,7 @@ app.use('/api/*', (req, res) => {
 // General 404 handler
 app.use(notFoundHandler)
 
-// Global error handler (must be last)
+// Global error handler (must be last) - Enhanced for Zod validation errors
 app.use(errorHandler)
 
 // ============================================================================
@@ -457,6 +605,7 @@ async function startServer() {
       console.log(`❤️  Health Check: ${config.api.baseUrl}/health/detailed`)
       console.log(`🌍 Environment: ${config.environment}`)
       console.log(`🔗 Frontend: ${config.frontend.url}`)
+      console.log(`✅ Zod validation enabled for type-safe API requests`)
       console.log('🎬 Ready for professional video content management!')
     })
 
