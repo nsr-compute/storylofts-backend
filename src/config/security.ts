@@ -40,12 +40,6 @@ export const getHelmetConfig = () => {
     // DNS Prefetch Control
     dnsPrefetchControl: { allow: false },
     
-    // Expect-CT (Certificate Transparency)
-    expectCt: config.environment === 'production' ? {
-      enforce: true,
-      maxAge: 30 * 24 * 60 * 60, // 30 days
-    } : false,
-    
     // Frame protection
     frameguard: { action: 'deny' },
     
