@@ -1,7 +1,8 @@
-// src/routes/content.ts - StoryLofts Content Management Routes (Enhanced with Zod)
+// src/routes/content.ts - StoryLofts Content Management Routes (Migrated to New Zod System)
 import { Router, Response } from 'express';
+import { z } from 'zod';
 import { authenticateToken } from '../middleware/auth';
-import { validateRequest } from '../middleware/validation';
+import { validate } from '../middleware/validation';
 import { db } from '../services/database';
 import { 
   ApiResponse, 
@@ -12,18 +13,155 @@ import {
   VideoVisibility 
 } from '../types';
 
-// Import Zod schemas
-import { z } from 'zod';
-import {
-  createVideoContentSchema,
-  updateVideoContentSchema,
-  videoListQuerySchema,
-  videoIdParamsSchema,
-  createTagSchema,
-  searchQuerySchema
-} from '../schemas';
-
 const router = Router();
+
+// ============================================================================
+// ZOD SCHEMAS - Centralized Validation Schemas
+// ============================================================================
+
+// Base schemas for reuse
+const uuidSchema = z.string().uuid('Invalid UUID format');
+const videoIdParamsSchema = z.object({
+  params: z.object({
+    id: uuidSchema
+  })
+});
+
+// Video content creation schema
+const createVideoContentSchema = z.object({
+  body: z.object({
+    title: z.string()
+      .min(1, 'Title is required')
+      .max(255, 'Title must be less than 255 characters')
+      .trim(),
+    description: z.string()
+      .max(2000, 'Description must be less than 2000 characters')
+      .optional(),
+    filename: z.string()
+      .min(1, 'Filename is required')
+      .regex(/\.(mp4|mov|avi|webm|mkv|m4v|3gp|flv)$/i, 'Invalid video file format'),
+    fileSize: z.number()
+      .positive('File size must be positive')
+      .max(524288000, 'File size cannot exceed 500MB'), // 500MB in bytes
+    videoUrl: z.string().url('Invalid video URL'),
+    visibility: z.enum(['public', 'private', 'unlisted']).default('private'),
+    tags: z.array(z.string().trim().min(1))
+      .max(10, 'Maximum 10 tags allowed')
+      .optional()
+      .default([]),
+    mimeType: z.string()
+      .regex(/^video\//, 'Must be a video MIME type')
+      .optional(),
+    duration: z.number().positive('Duration must be positive').optional(),
+    thumbnailUrl: z.string().url('Invalid thumbnail URL').optional()
+  })
+});
+
+// Video content update schema (all fields optional)
+const updateVideoContentSchema = z.object({
+  params: z.object({
+    id: uuidSchema
+  }),
+  body: z.object({
+    title: z.string()
+      .min(1, 'Title is required')
+      .max(255, 'Title must be less than 255 characters')
+      .trim()
+      .optional(),
+    description: z.string()
+      .max(2000, 'Description must be less than 2000 characters')
+      .optional(),
+    visibility: z.enum(['public', 'private', 'unlisted']).optional(),
+    tags: z.array(z.string().trim().min(1))
+      .max(10, 'Maximum 10 tags allowed')
+      .optional(),
+    thumbnailUrl: z.string().url('Invalid thumbnail URL').optional(),
+    status: z.enum(['uploading', 'processing', 'completed', 'failed']).optional()
+  })
+});
+
+// Query parameters for listing videos
+const videoListQuerySchema = z.object({
+  query: z.object({
+    page: z.string()
+      .transform(val => parseInt(val, 10))
+      .refine(val => !isNaN(val) && val > 0, 'Page must be a positive number')
+      .default('1'),
+    limit: z.string()
+      .transform(val => parseInt(val, 10))
+      .refine(val => !isNaN(val) && val > 0 && val <= 100, 'Limit must be between 1 and 100')
+      .default('20'),
+    status: z.enum(['uploading', 'processing', 'completed', 'failed']).optional(),
+    visibility: z.enum(['public', 'private', 'unlisted']).optional(),
+    search: z.string().max(100, 'Search query too long').optional(),
+    sortBy: z.enum(['created_at', 'updated_at', 'title', 'file_size', 'duration'])
+      .default('created_at'),
+    sortOrder: z.enum(['asc', 'desc']).default('desc'),
+    tags: z.string()
+      .transform(val => val.split(',').map(tag => tag.trim()).filter(Boolean))
+      .optional(),
+    createdAfter: z.string().datetime('Invalid date format').optional(),
+    createdBefore: z.string().datetime('Invalid date format').optional()
+  })
+});
+
+// Search query schema
+const searchQuerySchema = z.object({
+  query: z.object({
+    q: z.string()
+      .min(1, 'Search query is required')
+      .max(100, 'Search query too long')
+      .trim(),
+    page: z.string()
+      .transform(val => parseInt(val, 10))
+      .refine(val => !isNaN(val) && val > 0)
+      .default('1'),
+    limit: z.string()
+      .transform(val => parseInt(val, 10))
+      .refine(val => !isNaN(val) && val > 0 && val <= 50)
+      .default('20'),
+    visibility: z.enum(['public', 'private', 'unlisted']).optional(),
+    tags: z.string()
+      .transform(val => val.split(',').map(tag => tag.trim()).filter(Boolean))
+      .optional()
+  })
+});
+
+// Tag creation schema
+const createTagSchema = z.object({
+  body: z.object({
+    name: z.string()
+      .min(1, 'Tag name is required')
+      .max(50, 'Tag name must be less than 50 characters')
+      .trim()
+      .toLowerCase(),
+    color: z.string()
+      .regex(/^#[0-9A-Fa-f]{6}$/, 'Color must be a valid hex color code')
+      .optional()
+      .default('#3B82F6'),
+    description: z.string()
+      .max(200, 'Description must be less than 200 characters')
+      .optional()
+  })
+});
+
+// Bulk operations schemas
+const bulkVisibilityUpdateSchema = z.object({
+  body: z.object({
+    videoIds: z.array(uuidSchema)
+      .min(1, 'At least one video ID is required')
+      .max(50, 'Cannot update more than 50 videos at once'),
+    visibility: z.enum(['public', 'private', 'unlisted'])
+  })
+});
+
+const bulkDeleteSchema = z.object({
+  body: z.object({
+    videoIds: z.array(uuidSchema)
+      .min(1, 'At least one video ID is required')
+      .max(20, 'Cannot delete more than 20 videos at once')
+  })
+});
 
 // ============================================================================
 // VIDEO CONTENT ROUTES
@@ -35,7 +173,7 @@ const router = Router();
  * Public endpoint for public content, authenticated for user content
  */
 router.get('/', 
-  validateRequest({ query: videoListQuerySchema }),
+  validate(videoListQuerySchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       // req.query is now validated and typed
@@ -79,7 +217,7 @@ router.get('/',
  * Public endpoint for public content, authenticated for user content
  */
 router.get('/search',
-  validateRequest({ query: searchQuerySchema }),
+  validate(searchQuerySchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const userId = req.user?.sub;
@@ -150,7 +288,7 @@ router.get('/stats',
  * Public for public content, authenticated for private content
  */
 router.get('/:id',
-  validateRequest({ params: videoIdParamsSchema }),
+  validate(videoIdParamsSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
@@ -209,7 +347,7 @@ router.get('/:id',
  */
 router.post('/',
   authenticateToken,
-  validateRequest({ body: createVideoContentSchema }),
+  validate(createVideoContentSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const userId = req.user!.sub;
@@ -268,10 +406,7 @@ router.post('/',
  */
 router.put('/:id',
   authenticateToken,
-  validateRequest({ 
-    params: videoIdParamsSchema,
-    body: updateVideoContentSchema 
-  }),
+  validate(updateVideoContentSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
@@ -335,7 +470,7 @@ router.put('/:id',
  */
 router.delete('/:id',
   authenticateToken,
-  validateRequest({ params: videoIdParamsSchema }),
+  validate(videoIdParamsSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
@@ -425,7 +560,7 @@ router.get('/meta/tags', async (req: AuthenticatedRequest, res: Response) => {
  */
 router.post('/meta/tags',
   authenticateToken,
-  validateRequest({ body: createTagSchema }),
+  validate(createTagSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { name, color, description } = req.body;
@@ -467,7 +602,7 @@ router.post('/meta/tags',
 );
 
 // ============================================================================
-// BULK OPERATIONS (New Enhanced Features)
+// BULK OPERATIONS
 // ============================================================================
 
 /**
@@ -477,12 +612,7 @@ router.post('/meta/tags',
  */
 router.put('/bulk/visibility',
   authenticateToken,
-  validateRequest({
-    body: z.object({
-      videoIds: z.array(z.string().uuid()).min(1).max(50),
-      visibility: z.enum(['public', 'private', 'unlisted'])
-    })
-  }),
+  validate(bulkVisibilityUpdateSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { videoIds, visibility } = req.body;
@@ -516,11 +646,7 @@ router.put('/bulk/visibility',
  */
 router.delete('/bulk',
   authenticateToken,
-  validateRequest({
-    body: z.object({
-      videoIds: z.array(z.string().uuid()).min(1).max(20) // Limit bulk deletes
-    })
-  }),
+  validate(bulkDeleteSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { videoIds } = req.body;
