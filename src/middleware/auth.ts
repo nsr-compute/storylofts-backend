@@ -1,3 +1,4 @@
+// src/middleware/auth.ts
 import { Request, Response, NextFunction } from 'express';
 import { expressjwt } from 'express-jwt';
 import jwksClient from 'jwks-rsa';
@@ -35,15 +36,34 @@ export const validateJWT = expressjwt({
   algorithms: ['RS256']
 });
 
-// Extract user info from JWT
+// FIXED: Extract user info from JWT with proper optional handling
 export const extractUserInfo = (req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
   if (req.auth) {
+    // FIXED: Handle optional properties properly - Auth0 doesn't guarantee email/name
     req.user = {
       sub: req.auth.sub as string,
-      email: req.auth.email as string,
-      name: req.auth.name as string,
-      picture: req.auth.picture as string
+      email: req.auth.email as string | undefined, // Keep as optional
+      name: req.auth.name as string | undefined,   // Keep as optional
+      picture: req.auth.picture as string | undefined
     };
+  }
+  next();
+};
+
+// Type guard to ensure required user properties exist
+export const requireFullAuth = (req: AuthenticatedRequest): req is AuthenticatedRequest & { 
+  user: { sub: string; email: string; name: string; picture?: string } 
+} => {
+  return !!(req.user?.sub && req.user?.email && req.user?.name);
+};
+
+// Middleware to require complete user information
+export const requireCompleteUserInfo = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  if (!requireFullAuth(req)) {
+    return res.status(401).json({ 
+      success: false,
+      error: 'Complete user information required (email and name must be present)' 
+    });
   }
   next();
 };
@@ -65,8 +85,11 @@ export const optionalAuth = (req: Request, res: Response, next: NextFunction) =>
   });
 };
 
-// Required authentication middleware
+// Required authentication middleware (basic)
 export const requireAuth = [validateJWT, extractUserInfo];
+
+// Required authentication middleware with complete user info
+export const requireAuthWithUserInfo = [validateJWT, extractUserInfo, requireCompleteUserInfo];
 
 // Export alias for compatibility with routes
 export const authenticateToken = requireAuth;
