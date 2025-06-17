@@ -1,6 +1,8 @@
 // src/types/index.ts - TypeScript type definitions for StoryLofts
 import { Request } from 'express';
 
+export * from './auth';
+
 export interface UserProfile {
   id: string;
   auth0Id: string;
