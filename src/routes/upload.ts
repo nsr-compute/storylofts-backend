@@ -7,15 +7,15 @@ import { validate } from '../middleware/validation';
 import { backblazeService } from '../services/backblaze';
 import { db } from '../services/database';
 import { config } from '../config';
-import { AuthenticatedRequest } from '../types/auth';
+
 import { 
-  AuthenticatedRequest, 
   ApiResponse, 
   VideoContent, 
   VideoStatus, 
   VideoVisibility 
 } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { AuthenticatedRequest } from '../types/auth';
 
 const router = Router();
 
