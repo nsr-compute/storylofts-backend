@@ -264,10 +264,10 @@ router.get('/search',
  */
 router.get('/stats',
   authenticateToken,
-  async (req: GuaranteedAuthenticatedRequest, res: Response) => {
+  async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // FIXED: No null checking needed with GuaranteedAuthenticatedRequest
-      const userId = req.user.sub;
+      // Type assertion after auth middleware - we know user exists
+      const userId = (req as GuaranteedAuthenticatedRequest).user.sub;
       const stats = await db.getUserContentStats(userId);
 
       const response: ApiResponse = {
@@ -356,10 +356,10 @@ router.get('/:id',
 router.post('/',
   authenticateToken,
   validate(createVideoContentSchema),
-  async (req: GuaranteedAuthenticatedRequest, res: Response) => {
+  async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // FIXED: No null checking needed with GuaranteedAuthenticatedRequest
-      const userId = req.user.sub;
+      // Type assertion after auth middleware - we know user exists
+      const userId = (req as GuaranteedAuthenticatedRequest).user.sub;
       const contentInput = {
         ...req.body,
         userId
@@ -416,11 +416,11 @@ router.post('/',
 router.put('/:id',
   authenticateToken,
   validate(updateVideoContentSchema),
-  async (req: GuaranteedAuthenticatedRequest, res: Response) => {
+  async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // FIXED: No null checking needed with GuaranteedAuthenticatedRequest
+      // Type assertion after auth middleware - we know user exists
       const { id } = req.params;
-      const userId = req.user.sub;
+      const userId = (req as GuaranteedAuthenticatedRequest).user.sub;
 
       // Check if there's anything to update
       if (Object.keys(req.body).length === 0) {
@@ -481,11 +481,11 @@ router.put('/:id',
 router.delete('/:id',
   authenticateToken,
   validate(videoIdParamsSchema),
-  async (req: GuaranteedAuthenticatedRequest, res: Response) => {
+  async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // FIXED: No null checking needed with GuaranteedAuthenticatedRequest
+      // Type assertion after auth middleware - we know user exists
       const { id } = req.params;
-      const userId = req.user.sub;
+      const userId = (req as GuaranteedAuthenticatedRequest).user.sub;
 
       const deleted = await db.deleteVideoContent(id, userId);
 
@@ -572,9 +572,9 @@ router.get('/meta/tags', async (req: AuthenticatedRequest, res: Response) => {
 router.post('/meta/tags',
   authenticateToken,
   validate(createTagSchema),
-  async (req: GuaranteedAuthenticatedRequest, res: Response) => {
+  async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // FIXED: No null checking needed with GuaranteedAuthenticatedRequest
+      // Type assertion after auth middleware - we know user exists
       const { name, color, description } = req.body;
       
       try {
@@ -625,11 +625,11 @@ router.post('/meta/tags',
 router.put('/bulk/visibility',
   authenticateToken,
   validate(bulkVisibilityUpdateSchema),
-  async (req: GuaranteedAuthenticatedRequest, res: Response) => {
+  async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // FIXED: No null checking needed with GuaranteedAuthenticatedRequest
+      // Type assertion after auth middleware - we know user exists
       const { videoIds, visibility } = req.body;
-      const userId = req.user.sub;
+      const userId = (req as GuaranteedAuthenticatedRequest).user.sub;
 
       // This would need to be implemented in the database service
       // const results = await db.bulkUpdateVisibility(videoIds, userId, visibility);
