@@ -32,7 +32,7 @@ export interface AuthenticatedRequest extends Request {
  * Extended Express Request interface with guaranteed authentication data
  * Use this for route handlers that come AFTER authentication middleware
  * 
- * This type guarantees that user and auth properties exist
+ * This type guarantees that user property exists, auth is optional
  */
 export interface GuaranteedAuthenticatedRequest extends Request {
   user: {
@@ -41,7 +41,7 @@ export interface GuaranteedAuthenticatedRequest extends Request {
     name?: string;         // Optional - not guaranteed by Auth0
     picture?: string;      // Optional - profile picture URL
   };
-  auth: {
+  auth?: {
     sub: string;
     email?: string;
     name?: string;
@@ -65,7 +65,7 @@ export interface FullyAuthenticatedRequest extends Request {
     name: string;          // Required
     picture?: string;
   };
-  auth: {
+  auth?: {
     sub: string;
     email: string;
     name: string;
