@@ -3,7 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 import { expressjwt } from 'express-jwt';
 import jwksClient from 'jwks-rsa';
 import { config } from '../config';
-import { AuthenticatedRequest } from '../types';
+import { AuthenticatedRequest } from '../types/auth';
 
 // JWKS client for Auth0
 const client = jwksClient({
@@ -39,12 +39,12 @@ export const validateJWT = expressjwt({
 // FIXED: Extract user info from JWT with proper optional handling
 export const extractUserInfo = (req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
   if (req.auth) {
-    // FIXED: Handle optional properties properly - Auth0 doesn't guarantee email/name
+    // FIXED: Keep properties as optional - don't cast undefined to string
     req.user = {
       sub: req.auth.sub as string,
-      email: req.auth.email as string | undefined, // Keep as optional
-      name: req.auth.name as string | undefined,   // Keep as optional
-      picture: req.auth.picture as string | undefined
+      email: req.auth.email,      // Keep as string | undefined
+      name: req.auth.name,        // Keep as string | undefined
+      picture: req.auth.picture   // Keep as string | undefined
     };
   }
   next();
