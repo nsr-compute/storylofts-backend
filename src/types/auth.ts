@@ -3,6 +3,7 @@ import { Request } from 'express';
 
 /**
  * Extended Express Request interface with optional authentication data
+ * Use this for routes that may or may not have authentication
  * 
  * IMPORTANT: email and name are optional because Auth0 JWT tokens 
  * don't guarantee these fields will always be present
@@ -15,6 +16,32 @@ export interface AuthenticatedRequest extends Request {
     picture?: string;      // Optional - profile picture URL
   };
   auth?: {
+    sub: string;
+    email?: string;
+    name?: string;
+    picture?: string;
+    iat?: number;          // Issued at timestamp
+    exp?: number;          // Expiration timestamp
+    aud?: string;          // Audience
+    iss?: string;          // Issuer
+    [key: string]: any;    // Allow additional JWT claims
+  };
+}
+
+/**
+ * Extended Express Request interface with guaranteed authentication data
+ * Use this for route handlers that come AFTER authentication middleware
+ * 
+ * This type guarantees that user and auth properties exist
+ */
+export interface GuaranteedAuthenticatedRequest extends Request {
+  user: {
+    sub: string;           // Always present in Auth0 JWT
+    email?: string;        // Optional - not guaranteed by Auth0
+    name?: string;         // Optional - not guaranteed by Auth0
+    picture?: string;      // Optional - profile picture URL
+  };
+  auth: {
     sub: string;
     email?: string;
     name?: string;
@@ -83,6 +110,52 @@ export interface Auth0JWTPayload {
 }
 
 /**
+ * Video Content Interface
+ * Structure for video content in the database
+ */
+export interface VideoContent {
+  id: string;
+  fileId: string;
+  title: string;
+  description?: string;
+  tags: string[];
+  userId: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  uploadedAt: Date;
+  status: 'uploading' | 'processing' | 'ready' | 'failed';
+}
+
+/**
+ * Upload Session Interface
+ * Structure for upload sessions
+ */
+export interface UploadSession {
+  sessionId: string;
+  userId: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  status: 'pending' | 'active' | 'completed' | 'failed';
+  createdAt: Date;
+  expiresAt: Date;
+}
+
+/**
+ * User Permission Interface
+ * Defines user permissions and roles
+ */
+export interface UserPermissions {
+  canUpload: boolean;
+  canDelete: boolean;
+  canManageContent: boolean;
+  canViewAnalytics: boolean;
+  maxStorageGB: number;
+  maxFileSize: number;
+}
+
+/**
  * Authentication middleware options
  */
 export interface AuthMiddlewareOptions {
@@ -95,7 +168,7 @@ export interface AuthMiddlewareOptions {
 /**
  * Type guard to check if user has required authentication
  */
-export function isAuthenticated(req: AuthenticatedRequest): req is AuthenticatedRequest & { user: { sub: string } } {
+export function isAuthenticated(req: AuthenticatedRequest): req is GuaranteedAuthenticatedRequest {
   return !!(req.user?.sub);
 }
 
@@ -109,14 +182,14 @@ export function isFullyAuthenticated(req: AuthenticatedRequest): req is FullyAut
 /**
  * Type guard to check if user has email
  */
-export function hasUserEmail(req: AuthenticatedRequest): req is AuthenticatedRequest & { user: { sub: string; email: string } } {
+export function hasUserEmail(req: AuthenticatedRequest): req is GuaranteedAuthenticatedRequest & { user: { sub: string; email: string } } {
   return !!(req.user?.sub && req.user?.email);
 }
 
 /**
  * Type guard to check if user has name
  */
-export function hasUserName(req: AuthenticatedRequest): req is AuthenticatedRequest & { user: { sub: string; name: string } } {
+export function hasUserName(req: AuthenticatedRequest): req is GuaranteedAuthenticatedRequest & { user: { sub: string; name: string } } {
   return !!(req.user?.sub && req.user?.name);
 }
 
@@ -160,3 +233,29 @@ export class IncompleteUserError extends Error {
     this.name = 'IncompleteUserError';
   }
 }
+
+/**
+ * Default User Permissions
+ * Standard permissions for new users
+ */
+export const DEFAULT_USER_PERMISSIONS: UserPermissions = {
+  canUpload: true,
+  canDelete: true,
+  canManageContent: true,
+  canViewAnalytics: false,
+  maxStorageGB: 5,
+  maxFileSize: 100 * 1024 * 1024 // 100MB
+};
+
+/**
+ * Admin User Permissions
+ * Full permissions for admin users
+ */
+export const ADMIN_USER_PERMISSIONS: UserPermissions = {
+  canUpload: true,
+  canDelete: true,
+  canManageContent: true,
+  canViewAnalytics: true,
+  maxStorageGB: 1000,
+  maxFileSize: 1024 * 1024 * 1024 // 1GB
+};
