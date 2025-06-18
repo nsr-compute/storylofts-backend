@@ -13,6 +13,7 @@ import {
   VideoStatus,
   VideoVisibility 
 } from '../types';
+import { AuthenticatedRequest } from '../types/auth';  // Import from auth file
 
 const router = Router();
 
