@@ -64,3 +64,6 @@ coverage/
 
 # ESLint cache
 .eslintcache
+
+# MacOS Generated DS Files
+.DS_Store
