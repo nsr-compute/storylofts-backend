@@ -9,11 +9,14 @@ import {
   ApiResponse, 
   VideoContent, 
   VideoListOptions, 
-  AuthenticatedRequest,
   VideoStatus,
   VideoVisibility 
 } from '../types';
-import { AuthenticatedRequest } from '../types/auth';  // Import from auth file
+// FIXED: Single import from auth file, removed duplicate
+import { 
+  AuthenticatedRequest,
+  GuaranteedAuthenticatedRequest
+} from '../types/auth';
 
 const router = Router();
 
@@ -261,18 +264,9 @@ router.get('/search',
  */
 router.get('/stats',
   authenticateToken,
-  async (req: AuthenticatedRequest, res: Response) => {
+  async (req: GuaranteedAuthenticatedRequest, res: Response) => {
     try {
-      // FIXED: Proper null checking
-      if (!req.user?.sub) {
-        const response: ApiResponse = {
-          success: false,
-          error: 'Authentication required',
-          message: 'You must be logged in to view content statistics'
-        };
-        return res.status(401).json(response);
-      }
-
+      // FIXED: No null checking needed with GuaranteedAuthenticatedRequest
       const userId = req.user.sub;
       const stats = await db.getUserContentStats(userId);
 
@@ -362,18 +356,9 @@ router.get('/:id',
 router.post('/',
   authenticateToken,
   validate(createVideoContentSchema),
-  async (req: AuthenticatedRequest, res: Response) => {
+  async (req: GuaranteedAuthenticatedRequest, res: Response) => {
     try {
-      // FIXED: Proper null checking
-      if (!req.user?.sub) {
-        const response: ApiResponse = {
-          success: false,
-          error: 'Authentication required',
-          message: 'You must be logged in to create content'
-        };
-        return res.status(401).json(response);
-      }
-
+      // FIXED: No null checking needed with GuaranteedAuthenticatedRequest
       const userId = req.user.sub;
       const contentInput = {
         ...req.body,
@@ -431,18 +416,9 @@ router.post('/',
 router.put('/:id',
   authenticateToken,
   validate(updateVideoContentSchema),
-  async (req: AuthenticatedRequest, res: Response) => {
+  async (req: GuaranteedAuthenticatedRequest, res: Response) => {
     try {
-      // FIXED: Proper null checking
-      if (!req.user?.sub) {
-        const response: ApiResponse = {
-          success: false,
-          error: 'Authentication required',
-          message: 'You must be logged in to update content'
-        };
-        return res.status(401).json(response);
-      }
-
+      // FIXED: No null checking needed with GuaranteedAuthenticatedRequest
       const { id } = req.params;
       const userId = req.user.sub;
 
@@ -505,18 +481,9 @@ router.put('/:id',
 router.delete('/:id',
   authenticateToken,
   validate(videoIdParamsSchema),
-  async (req: AuthenticatedRequest, res: Response) => {
+  async (req: GuaranteedAuthenticatedRequest, res: Response) => {
     try {
-      // FIXED: Proper null checking
-      if (!req.user?.sub) {
-        const response: ApiResponse = {
-          success: false,
-          error: 'Authentication required',
-          message: 'You must be logged in to delete content'
-        };
-        return res.status(401).json(response);
-      }
-
+      // FIXED: No null checking needed with GuaranteedAuthenticatedRequest
       const { id } = req.params;
       const userId = req.user.sub;
 
@@ -605,18 +572,9 @@ router.get('/meta/tags', async (req: AuthenticatedRequest, res: Response) => {
 router.post('/meta/tags',
   authenticateToken,
   validate(createTagSchema),
-  async (req: AuthenticatedRequest, res: Response) => {
+  async (req: GuaranteedAuthenticatedRequest, res: Response) => {
     try {
-      // FIXED: Proper null checking
-      if (!req.user?.sub) {
-        const response: ApiResponse = {
-          success: false,
-          error: 'Authentication required',
-          message: 'You must be logged in to create tags'
-        };
-        return res.status(401).json(response);
-      }
-
+      // FIXED: No null checking needed with GuaranteedAuthenticatedRequest
       const { name, color, description } = req.body;
       
       try {
@@ -667,18 +625,9 @@ router.post('/meta/tags',
 router.put('/bulk/visibility',
   authenticateToken,
   validate(bulkVisibilityUpdateSchema),
-  async (req: AuthenticatedRequest, res: Response) => {
+  async (req: GuaranteedAuthenticatedRequest, res: Response) => {
     try {
-      // FIXED: Proper null checking
-      if (!req.user?.sub) {
-        const response: ApiResponse = {
-          success: false,
-          error: 'Authentication required',
-          message: 'You must be logged in to update content visibility'
-        };
-        return res.status(401).json(response);
-      }
-
+      // FIXED: No null checking needed with GuaranteedAuthenticatedRequest
       const { videoIds, visibility } = req.body;
       const userId = req.user.sub;
 
@@ -711,18 +660,9 @@ router.put('/bulk/visibility',
 router.delete('/bulk',
   authenticateToken,
   validate(bulkDeleteSchema),
-  async (req: AuthenticatedRequest, res: Response) => {
+  async (req: GuaranteedAuthenticatedRequest, res: Response) => {
     try {
-      // FIXED: Proper null checking
-      if (!req.user?.sub) {
-        const response: ApiResponse = {
-          success: false,
-          error: 'Authentication required',
-          message: 'You must be logged in to delete content'
-        };
-        return res.status(401).json(response);
-      }
-
+      // FIXED: No null checking needed with GuaranteedAuthenticatedRequest
       const { videoIds } = req.body;
       const userId = req.user.sub;
 
