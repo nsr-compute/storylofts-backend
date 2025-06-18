@@ -160,12 +160,4 @@ export class IncompleteUserError extends Error {
     this.name = 'IncompleteUserError';
   }
 }
-
-// Export all types for use throughout the application
-export type {
-  AuthenticatedRequest,
-  FullyAuthenticatedRequest,
-  JWTUser,
-  Auth0JWTPayload,
-  AuthMiddlewareOptions
 };
