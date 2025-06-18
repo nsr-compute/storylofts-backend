@@ -160,4 +160,3 @@ export class IncompleteUserError extends Error {
     this.name = 'IncompleteUserError';
   }
 }
-};
