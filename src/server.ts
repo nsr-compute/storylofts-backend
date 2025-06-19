@@ -31,7 +31,7 @@ import healthRoutes from './routes/health'
 // ============================================================================
 
 const app = express()
-const config = configService.getConfig()
+const config = configService.getConfig() as any
 
 // Trust proxy (critical for DigitalOcean App Platform)
 app.set('trust proxy', 1)
