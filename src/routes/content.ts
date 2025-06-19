@@ -1,4 +1,4 @@
-// src/routes/content.ts - StoryLofts Content Management Routes (FIXED)
+// src/routes/content.ts - StoryLofts Content Management Routes (TYPESCRIPT FIXED)
 import { Router, Response } from 'express';
 import { z } from 'zod';
 import { authenticateToken } from '../middleware/auth';
@@ -12,11 +12,8 @@ import {
   VideoStatus,
   VideoVisibility 
 } from '../types';
-// FIXED: Single import from auth file, removed duplicate
-import { 
-  AuthenticatedRequest,
-  GuaranteedAuthenticatedRequest
-} from '../types/auth';
+// FIXED: Single import from auth file
+import { AuthenticatedRequest } from '../types/auth';
 
 const router = Router();
 
@@ -184,7 +181,7 @@ router.get('/',
       // req.query is now validated and typed
       const options: VideoListOptions = req.query as any;
 
-      // FIXED: Handle optional authentication
+      // Handle optional authentication
       const userId = req.user?.sub || undefined;
 
       const result = await db.listVideoContent(userId, options);
@@ -225,7 +222,7 @@ router.get('/search',
   validate(searchQuerySchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // FIXED: Handle optional authentication
+      // Handle optional authentication
       const userId = req.user?.sub || undefined;
       const searchOptions = req.query as any;
 
@@ -266,8 +263,17 @@ router.get('/stats',
   authenticateToken,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // Type assertion after auth middleware - we know user exists
-      const userId = (req as GuaranteedAuthenticatedRequest).user.sub;
+      // FIXED: Runtime null check instead of type assertion
+      if (!req.user?.sub) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Authentication required',
+          message: 'You must be logged in to view content statistics'
+        };
+        return res.status(401).json(response);
+      }
+
+      const userId = req.user.sub;
       const stats = await db.getUserContentStats(userId);
 
       const response: ApiResponse = {
@@ -299,7 +305,7 @@ router.get('/:id',
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      // FIXED: Handle optional authentication
+      // Handle optional authentication
       const userId = req.user?.sub || undefined;
 
       const content = await db.getVideoContent(id, userId);
@@ -358,8 +364,17 @@ router.post('/',
   validate(createVideoContentSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // Type assertion after auth middleware - we know user exists
-      const userId = (req as GuaranteedAuthenticatedRequest).user.sub;
+      // FIXED: Runtime null check instead of type assertion
+      if (!req.user?.sub) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Authentication required',
+          message: 'You must be logged in to create video content'
+        };
+        return res.status(401).json(response);
+      }
+
+      const userId = req.user.sub;
       const contentInput = {
         ...req.body,
         userId
@@ -418,9 +433,18 @@ router.put('/:id',
   validate(updateVideoContentSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // Type assertion after auth middleware - we know user exists
+      // FIXED: Runtime null check instead of type assertion
+      if (!req.user?.sub) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Authentication required',
+          message: 'You must be logged in to update video content'
+        };
+        return res.status(401).json(response);
+      }
+
       const { id } = req.params;
-      const userId = (req as GuaranteedAuthenticatedRequest).user.sub;
+      const userId = req.user.sub;
 
       // Check if there's anything to update
       if (Object.keys(req.body).length === 0) {
@@ -483,9 +507,18 @@ router.delete('/:id',
   validate(videoIdParamsSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // Type assertion after auth middleware - we know user exists
+      // FIXED: Runtime null check instead of type assertion
+      if (!req.user?.sub) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Authentication required',
+          message: 'You must be logged in to delete video content'
+        };
+        return res.status(401).json(response);
+      }
+
       const { id } = req.params;
-      const userId = (req as GuaranteedAuthenticatedRequest).user.sub;
+      const userId = req.user.sub;
 
       const deleted = await db.deleteVideoContent(id, userId);
 
@@ -574,7 +607,16 @@ router.post('/meta/tags',
   validate(createTagSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // Type assertion after auth middleware - we know user exists
+      // FIXED: Runtime null check instead of type assertion
+      if (!req.user?.sub) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Authentication required',
+          message: 'You must be logged in to create tags'
+        };
+        return res.status(401).json(response);
+      }
+
       const { name, color, description } = req.body;
       
       try {
@@ -627,9 +669,18 @@ router.put('/bulk/visibility',
   validate(bulkVisibilityUpdateSchema),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // Type assertion after auth middleware - we know user exists
+      // FIXED: Runtime null check instead of type assertion
+      if (!req.user?.sub) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Authentication required',
+          message: 'You must be logged in to perform bulk operations'
+        };
+        return res.status(401).json(response);
+      }
+
       const { videoIds, visibility } = req.body;
-      const userId = (req as GuaranteedAuthenticatedRequest).user.sub;
+      const userId = req.user.sub;
 
       // This would need to be implemented in the database service
       // const results = await db.bulkUpdateVisibility(videoIds, userId, visibility);
@@ -660,9 +711,18 @@ router.put('/bulk/visibility',
 router.delete('/bulk',
   authenticateToken,
   validate(bulkDeleteSchema),
-  async (req: GuaranteedAuthenticatedRequest, res: Response) => {
+  async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // FIXED: No null checking needed with GuaranteedAuthenticatedRequest
+      // FIXED: Runtime null check instead of type assertion
+      if (!req.user?.sub) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Authentication required',
+          message: 'You must be logged in to perform bulk operations'
+        };
+        return res.status(401).json(response);
+      }
+
       const { videoIds } = req.body;
       const userId = req.user.sub;
 
