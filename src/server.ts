@@ -1,4 +1,4 @@
-// src/server.ts - StoryLofts ContentHive API Server (Production-Ready with Zod Validation)
+// src/server.ts - StoryLofts ContentHive API Server (FIXED TypeScript Issues)
 import express from 'express'
 import compression from 'compression'
 import cors from 'cors'
@@ -39,30 +39,10 @@ app.set('trust proxy', 1)
 // Disable X-Powered-By for security
 app.disable('x-powered-by')
 
-// ============================================================================
-// CONFIGURATION & UTILITIES
-// ============================================================================
-
-// Safe config accessor with proper type handling
-const getConfigValue = (value: string | undefined, defaultValue: string): string => {
-  return value && value.trim() !== '' ? value : defaultValue
-}
-
-// Config accessor functions for specific properties
-const getApiBaseUrl = (): string => getConfigValue(config.api.baseUrl, 'http://localhost:3000')
-const getEnvironment = (): string => getConfigValue(config.environment, 'development')
-const getFrontendUrl = (): string => getConfigValue(config.frontend.url, 'http://localhost:3001')
-const getServerPort = (): number => config.server.port || 3000
-
-// Safe logging function to avoid TypeScript strict mode issues
-const safeLog = (message: string) => {
-  // @ts-ignore - Bypass strict console.log typing
-  console.log(message)
-}
-
-safeLog('🚀 Initializing StoryLofts ContentHive API v1.0.0')
-safeLog('🌍 Environment: ' + getEnvironment())
-safeLog('🔗 Frontend URL: ' + getFrontendUrl())
+// FIXED: Safe logging without type assertions
+console.log('🚀 Initializing StoryLofts ContentHive API v1.0.0')
+console.log('🌍 Environment: ' + (config.environment || 'development'))
+console.log('🔗 Frontend URL: ' + (config.frontend.url || 'http://localhost:3001'))
 
 // ============================================================================
 // SECURITY MIDDLEWARE (Applied Early)
@@ -115,7 +95,6 @@ app.use('/api/content/search', rateLimit(rateLimits.search))
 app.use('/api/content', (req, res, next) => {
   // Apply content modification rate limit only for POST/PUT/DELETE
   if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
-    // contentModification does not exist, using general as a fallback.
     return rateLimit(rateLimits.general)(req, res, next)
   }
   next()
@@ -131,7 +110,7 @@ app.use((req, res, next) => {
   const path = req.path
   const ip = req.ip
   const userAgent = req.get('User-Agent') || 'Unknown'
-  const requestId = req.requestId
+  const requestId = (req as any).requestId
 
   // Enhanced logging with user context
   const logData = {
@@ -147,7 +126,7 @@ app.use((req, res, next) => {
   }
 
   // Log requests (exclude health checks in production to reduce noise)
-  if (getEnvironment() === 'development' || 
+  if (config.environment === 'development' || 
       (!req.path.startsWith('/health') && !req.path.startsWith('/favicon'))) {
     console.log(`📥 REQUEST: ${method} ${path}`, logData)
   }
@@ -159,7 +138,7 @@ app.use((req, res, next) => {
     const statusCode = res.statusCode
     
     // Log slow requests or errors
-    if (getEnvironment() === 'development' || 
+    if (config.environment === 'development' || 
         duration > 1000 || 
         statusCode >= 400) {
       console.log(`📤 RESPONSE: ${method} ${path} - ${statusCode} - ${duration}ms`, {
@@ -168,15 +147,6 @@ app.use((req, res, next) => {
         duration,
         contentLength: res.get('Content-Length')
       })
-    }
-    
-    // Log security events
-    if (statusCode === 429) {
-      // logSecurityEvent('Rate limit exceeded', { ip, path, userAgent })
-    } else if (statusCode === 403) {
-      // logSecurityEvent('Access forbidden', { ip, path, userAgent })
-    } else if (statusCode === 401) {
-      // logSecurityEvent('Unauthorized access attempt', { ip, path, userAgent })
     }
   })
   
@@ -206,8 +176,8 @@ app.get('/api/docs', (req, res) => {
     title: 'StoryLofts ContentHive API',
     version: '1.0.0',
     description: 'Professional video content platform API - Built for creators, professionals, and teams',
-    baseUrl: getApiBaseUrl(),
-    environment: getEnvironment(),
+    baseUrl: config.api.baseUrl || 'http://localhost:3000',
+    environment: config.environment || 'development',
     
     validation: {
       library: 'Zod v3.22+',
@@ -217,31 +187,7 @@ app.get('/api/docs', (req, res) => {
         'Structured error responses',
         'Schema composition and reusability',
         'Async validation support'
-      ],
-      errorFormat: {
-        structure: {
-          success: false,
-          errors: [
-            {
-              path: 'field.path',
-              message: 'Validation error message'
-            }
-          ]
-        },
-        example: {
-          success: false,
-          errors: [
-            {
-              path: 'body.title',
-              message: 'Title must be at least 1 character'
-            },
-            {
-              path: 'params.id',
-              message: 'Invalid UUID format'
-            }
-          ]
-        }
-      }
+      ]
     },
     
     security: {
@@ -249,32 +195,23 @@ app.get('/api/docs', (req, res) => {
         type: 'Bearer token (Auth0 JWT)',
         header: 'Authorization: Bearer <token>',
         provider: 'Auth0',
-        audience: config.auth0.audience
+        audience: config.auth0?.audience || 'storylofts-api'
       },
       
       rateLimit: {
-        general: getEnvironment() === 'development' ? '2000 requests per 15 minutes' : '200 requests per 15 minutes',
-        uploads: getEnvironment() === 'development' ? '500 requests per hour' : '50 requests per hour',
-        authentication: getEnvironment() === 'development' ? '200 requests per 15 minutes' : '20 requests per 15 minutes',
-        search: getEnvironment() === 'development' ? '300 requests per minute' : '30 requests per minute'
+        general: config.environment === 'development' ? '2000 requests per 15 minutes' : '200 requests per 15 minutes',
+        uploads: config.environment === 'development' ? '500 requests per hour' : '50 requests per hour',
+        authentication: config.environment === 'development' ? '200 requests per 15 minutes' : '20 requests per 15 minutes',
+        search: config.environment === 'development' ? '300 requests per minute' : '30 requests per minute'
       },
       
       cors: {
-        allowedOrigins: getEnvironment() === 'development' 
+        allowedOrigins: config.environment === 'development' 
           ? ['https://storylofts.com', 'http://localhost:3000', 'and more...'] 
           : ['https://storylofts.com', 'https://www.storylofts.com', 'https://app.storylofts.com'],
         credentials: true,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH']
-      },
-      
-      headers: [
-        'Content-Security-Policy',
-        'X-Content-Type-Options: nosniff',
-        'X-Frame-Options: DENY',
-        'X-XSS-Protection: 1; mode=block',
-        'Strict-Transport-Security (production only)',
-        'Referrer-Policy: strict-origin-when-cross-origin'
-      ]
+      }
     },
     
     endpoints: {
@@ -287,173 +224,27 @@ app.get('/api/docs', (req, res) => {
       },
       
       content: {
-        'GET /api/content': {
-          description: 'List video content (public) or user content (authenticated)',
-          validation: {
-            query: {
-              page: 'number (min: 1, default: 1)',
-              limit: 'number (min: 1, max: 100, default: 20)',
-              status: 'enum: uploading | processing | completed | failed',
-              visibility: 'enum: public | private | unlisted',
-              search: 'string (max: 100 chars)',
-              sortBy: 'enum: created_at | updated_at | title | file_size',
-              sortOrder: 'enum: asc | desc'
-            }
-          }
-        },
-        'GET /api/content/:id': {
-          description: 'Get specific video by ID',
-          validation: {
-            params: {
-              id: 'UUID format required'
-            }
-          }
-        },
-        'POST /api/content': {
-          description: 'Create new video content (authenticated)',
-          validation: {
-            body: {
-              title: 'string (1-255 chars, required)',
-              description: 'string (max: 2000 chars, optional)',
-              filename: 'string (valid video extension required)',
-              fileSize: 'number (max: 500MB)',
-              videoUrl: 'valid URL format',
-              visibility: 'enum: public | private | unlisted',
-              tags: 'array of strings (max: 10 tags)',
-              mimeType: 'video MIME type',
-              duration: 'positive number (optional)',
-              thumbnailUrl: 'valid URL (optional)'
-            }
-          }
-        },
-        'PUT /api/content/:id': {
-          description: 'Update video content (authenticated + ownership)',
-          validation: {
-            params: { id: 'UUID format' },
-            body: 'Same as POST but all fields optional'
-          }
-        },
-        'DELETE /api/content/:id': {
-          description: 'Delete video content (authenticated + ownership)',
-          validation: {
-            params: { id: 'UUID format' }
-          }
-        },
+        'GET /api/content': 'List video content (public) or user content (authenticated)',
+        'GET /api/content/:id': 'Get specific video by ID',
+        'POST /api/content': 'Create new video content (authenticated)',
+        'PUT /api/content/:id': 'Update video content (authenticated + ownership)',
+        'DELETE /api/content/:id': 'Delete video content (authenticated + ownership)',
         'GET /api/content/search': 'Search videos with full-text search',
         'GET /api/content/stats': 'User content statistics (authenticated)',
         'GET /api/content/meta/tags': 'Get available content tags'
       },
       
       upload: {
-        'POST /api/upload/url': {
-          description: 'Get pre-signed upload URL (authenticated)',
-          validation: {
-            body: {
-              filename: 'string (valid video extension, max: 255 chars)',
-              fileSize: 'number (max: 500MB)'
-            }
-          }
-        },
+        'POST /api/upload/url': 'Get pre-signed upload URL (authenticated)',
         'POST /api/upload/complete': 'Complete upload and create content record (authenticated)',
-        'GET /api/upload/status/:id': {
-          description: 'Check upload status (authenticated)',
-          validation: {
-            params: { id: 'UUID format' }
-          }
-        }
+        'GET /api/upload/status/:id': 'Check upload status (authenticated)'
       }
     },
     
     dataTypes: {
       supportedVideoFormats: ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.3gp', '.flv'],
       maxFileSize: '500MB (524,288,000 bytes)',
-      maxDuration: '24 hours',
-      allowedMimeTypes: [
-        'video/mp4',
-        'video/quicktime',
-        'video/x-msvideo',
-        'video/webm',
-        'video/x-matroska',
-        'video/x-m4v',
-        'video/3gpp',
-        'video/x-flv'
-      ]
-    },
-    
-    parameters: {
-      pagination: {
-        page: 'Page number (default: 1, min: 1)',
-        limit: 'Items per page (default: 20, max: 100)'
-      },
-      
-      filtering: {
-        status: 'uploading | processing | completed | failed',
-        visibility: 'public | private | unlisted',
-        tags: 'Comma-separated tag names',
-        search: 'Full-text search in title and description (max: 100 chars)',
-        createdAfter: 'ISO datetime filter',
-        createdBefore: 'ISO datetime filter'
-      },
-      
-      sorting: {
-        sortBy: 'created_at | updated_at | title | duration | file_size',
-        sortOrder: 'asc | desc (default: desc)'
-      }
-    },
-    
-    examples: {
-      'List public content': `GET ${getApiBaseUrl()}/api/content?visibility=public&page=1&limit=10`,
-      'Search business videos': `GET ${getApiBaseUrl()}/api/content/search?q=tutorial&tags=business,training`,
-      'Get user content': `GET ${getApiBaseUrl()}/api/content (with Authorization header)`,
-      'Create video content': {
-        url: `POST ${getApiBaseUrl()}/api/content`,
-        body: {
-          title: 'My Tutorial Video',
-          description: 'A comprehensive tutorial on video editing',
-          filename: 'tutorial.mp4',
-          fileSize: 157286400,
-          videoUrl: 'https://f005.backblazeb2.com/file/storylofts-content/videos/uuid/tutorial.mp4',
-          visibility: 'public',
-          tags: ['tutorial', 'editing', 'beginner'],
-          mimeType: 'video/mp4',
-          duration: 1800
-        }
-      },
-      'Upload workflow': [
-        '1. POST /api/upload/url - Get pre-signed URL and video ID',
-        '2. PUT <pre-signed-url> - Upload file directly to Backblaze B2',
-        '3. POST /api/upload/complete - Complete upload with metadata'
-      ]
-    },
-    
-    errorCodes: {
-      400: {
-        description: 'Bad Request - Invalid input data or validation error',
-        commonCauses: [
-          'Missing required fields',
-          'Invalid data types',
-          'Value out of allowed range',
-          'Invalid file format',
-          'Malformed UUID'
-        ]
-      },
-      401: 'Unauthorized - Missing, invalid, or expired authentication',
-      403: 'Forbidden - Insufficient permissions or CORS violation',
-      404: 'Not Found - Resource does not exist',
-      409: 'Conflict - Resource already exists or constraint violation',
-      413: 'Payload Too Large - File size exceeds limits',
-      422: {
-        description: 'Unprocessable Entity - Valid syntax but semantic errors',
-        commonCauses: [
-          'Business logic validation failed',
-          'Referenced resource not found',
-          'Invalid state transition'
-        ]
-      },
-      429: 'Too Many Requests - Rate limit exceeded',
-      500: 'Internal Server Error - Unexpected server error',
-      502: 'Bad Gateway - Upstream service error (Auth0, Backblaze B2)',
-      503: 'Service Unavailable - Server temporarily unavailable'
+      maxDuration: '24 hours'
     }
   }
   
@@ -470,7 +261,7 @@ app.get('/api/status', async (req, res) => {
       name: 'StoryLofts ContentHive API',
       version: '1.0.0',
       status: health.status,
-      environment: getEnvironment(),
+      environment: config.environment || 'development',
       timestamp: new Date().toISOString(),
       uptime: {
         seconds: Math.floor(uptime),
@@ -509,10 +300,10 @@ app.get('/api/status', async (req, res) => {
       },
       
       endpoints: {
-        documentation: `${getApiBaseUrl()}/api/docs`,
-        health: `${getApiBaseUrl()}/health/detailed`,
-        content: `${getApiBaseUrl()}/api/content`,
-        upload: `${getApiBaseUrl()}/api/upload`
+        documentation: `${config.api.baseUrl || 'http://localhost:3000'}/api/docs`,
+        health: `${config.api.baseUrl || 'http://localhost:3000'}/health/detailed`,
+        content: `${config.api.baseUrl || 'http://localhost:3000'}/api/content`,
+        upload: `${config.api.baseUrl || 'http://localhost:3000'}/api/upload`
       }
     })
   } catch (error) {
@@ -533,7 +324,7 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     description: 'Professional video content platform - Built for creators, professionals, and teams',
     status: 'operational',
-    environment: getEnvironment(),
+    environment: config.environment || 'development',
     timestamp: new Date().toISOString(),
     
     validation: {
@@ -542,17 +333,17 @@ app.get('/', (req, res) => {
     },
     
     links: {
-      documentation: `${getApiBaseUrl()}/api/docs`,
-      status: `${getApiBaseUrl()}/api/status`,
-      health: `${getApiBaseUrl()}/health/detailed`,
-      content: `${getApiBaseUrl()}/api/content`,
-      upload: `${getApiBaseUrl()}/api/upload`
+      documentation: `${config.api.baseUrl || 'http://localhost:3000'}/api/docs`,
+      status: `${config.api.baseUrl || 'http://localhost:3000'}/api/status`,
+      health: `${config.api.baseUrl || 'http://localhost:3000'}/health/detailed`,
+      content: `${config.api.baseUrl || 'http://localhost:3000'}/api/content`,
+      upload: `${config.api.baseUrl || 'http://localhost:3000'}/api/upload`
     },
     
     support: {
       website: 'https://storylofts.com',
       repository: 'https://github.com/nsr-compute/storylofts-backend',
-      documentation: `${getApiBaseUrl()}/api/docs`
+      documentation: `${config.api.baseUrl || 'http://localhost:3000'}/api/docs`
     },
     
     features: [
@@ -579,16 +370,16 @@ app.use('/api/*', (req, res) => {
     error: 'API endpoint not found',
     message: `The endpoint ${req.method} ${req.originalUrl} does not exist`,
     suggestion: 'Check the API documentation for available endpoints',
-    documentation: `${getApiBaseUrl()}/api/docs`,
+    documentation: `${config.api.baseUrl || 'http://localhost:3000'}/api/docs`,
     timestamp: new Date().toISOString(),
-    requestId: req.requestId
+    requestId: (req as any).requestId
   })
 })
 
 // General 404 handler
 app.use(notFoundHandler)
 
-// Global error handler (must be last) - Enhanced for Zod validation errors
+// Global error handler (must be last)
 app.use(errorHandler)
 
 // ============================================================================
@@ -597,34 +388,34 @@ app.use(errorHandler)
 
 async function startServer() {
   try {
-    safeLog('🚀 Starting StoryLofts ContentHive API...')
+    console.log('🚀 Starting StoryLofts ContentHive API...')
     
     // Connect to PostgreSQL database
-    safeLog('🔌 Connecting to PostgreSQL database...')
+    console.log('🔌 Connecting to PostgreSQL database...')
     await db.connect()
-    safeLog('✅ Database connected successfully')
+    console.log('✅ Database connected successfully')
     
     // Verify external services
-    safeLog('🔍 Verifying external services...')
+    console.log('🔍 Verifying external services...')
     const health = await healthService.getDetailedHealth()
-    safeLog('📊 Service status:', {
+    console.log('📊 Service status:', {
       database: health.services.database.status,
       storage: health.services.storage.status,
       auth: health.services.auth0.status
     })
     
     // Start HTTP server
-    const port = getServerPort()
+    const port = config.server?.port || 3000
     const server = app.listen(port, () => {
-      safeLog('✨ StoryLofts ContentHive API is ready!')
-      safeLog(`🎯 Server running on port ${port}`)
-      safeLog('📖 Documentation: ' + getApiBaseUrl() + '/api/docs')
-      safeLog('📊 API Status: ' + getApiBaseUrl() + '/api/status')
-      safeLog('❤️  Health Check: ' + getApiBaseUrl() + '/health/detailed')
-      safeLog('🌍 Environment: ' + getEnvironment())
-      safeLog('🔗 Frontend: ' + getFrontendUrl())
-      safeLog('✅ Zod validation enabled for type-safe API requests')
-      safeLog('🎬 Ready for professional video content management!')
+      console.log('✨ StoryLofts ContentHive API is ready!')
+      console.log(`🎯 Server running on port ${port}`)
+      console.log(`📖 Documentation: ${config.api?.baseUrl || 'http://localhost:3000'}/api/docs`)
+      console.log(`📊 API Status: ${config.api?.baseUrl || 'http://localhost:3000'}/api/status`)
+      console.log(`❤️  Health Check: ${config.api?.baseUrl || 'http://localhost:3000'}/health/detailed`)
+      console.log(`🌍 Environment: ${config.environment || 'development'}`)
+      console.log(`🔗 Frontend: ${config.frontend?.url || 'http://localhost:3001'}`)
+      console.log('✅ Zod validation enabled for type-safe API requests')
+      console.log('🎬 Ready for professional video content management!')
     })
 
     // Configure server timeouts
@@ -634,28 +425,28 @@ async function startServer() {
 
     // Graceful shutdown handling
     const gracefulShutdown = async (signal: string) => {
-      safeLog(`\n📡 Received ${signal}. Starting graceful shutdown...`)
+      console.log(`\n📡 Received ${signal}. Starting graceful shutdown...`)
       
       // Stop accepting new connections
       server.close(async () => {
-        safeLog('🔒 HTTP server closed')
+        console.log('🔒 HTTP server closed')
         
         try {
           // Close database connections
           await db.disconnect()
-          safeLog('🔌 Database disconnected')
+          console.log('🔌 Database disconnected')
           
-          safeLog('👋 StoryLofts ContentHive API shutdown completed gracefully')
+          console.log('👋 StoryLofts ContentHive API shutdown completed gracefully')
           process.exit(0)
         } catch (error) {
-          safeLog('❌ Error during shutdown: ' + error)
+          console.error('❌ Error during shutdown:', error)
           process.exit(1)
         }
       })
       
       // Force close after timeout
       setTimeout(() => {
-        safeLog('⏰ Shutdown timeout exceeded, forcing exit')
+        console.error('⏰ Shutdown timeout exceeded, forcing exit')
         process.exit(1)
       }, 30000) // 30 seconds
     }
@@ -666,19 +457,17 @@ async function startServer() {
     
     // Handle uncaught exceptions and rejections
     process.on('uncaughtException', (error) => {
-      safeLog('❌ Uncaught Exception: ' + error)
-      // logSecurityEvent('Uncaught exception', { error: error.message, stack: error.stack })
+      console.error('❌ Uncaught Exception:', error)
       gracefulShutdown('uncaughtException')
     })
     
     process.on('unhandledRejection', (reason, promise) => {
-      safeLog('❌ Unhandled Rejection at: ' + promise + ' reason: ' + reason)
-      // logSecurityEvent('Unhandled rejection', { reason, promise })
+      console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason)
       gracefulShutdown('unhandledRejection')
     })
     
   } catch (error) {
-    safeLog('❌ Failed to start StoryLofts ContentHive API: ' + error)
+    console.error('❌ Failed to start StoryLofts ContentHive API:', error)
     process.exit(1)
   }
 }
