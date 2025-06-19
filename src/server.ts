@@ -31,7 +31,7 @@ import healthRoutes from './routes/health'
 // ============================================================================
 
 const app = express()
-const config = configService.getConfig() as any
+const config = configService.getConfig()
 
 // Trust proxy (critical for DigitalOcean App Platform)
 app.set('trust proxy', 1)
@@ -39,12 +39,17 @@ app.set('trust proxy', 1)
 // Disable X-Powered-By for security
 app.disable('x-powered-by')
 
+// Safe config accessor to avoid TypeScript 'never' type issues
+const getConfigValue = (value: string | undefined, defaultValue: string): string => {
+  return value && value.trim() !== '' ? value : defaultValue
+}
+
 // Type assertion for console.log to avoid TypeScript issues
 const log = console.log as (...args: any[]) => void
 
 log('🚀 Initializing StoryLofts ContentHive API v1.0.0')
-log('🌍 Environment: ' + (config.environment || 'development'))
-log('🔗 Frontend URL: ' + (config.frontend.url || 'http://localhost:3001'))
+log('🌍 Environment: ' + getConfigValue(config.environment, 'development'))
+log('🔗 Frontend URL: ' + getConfigValue(config.frontend.url, 'http://localhost:3001'))
 
 // ============================================================================
 // SECURITY MIDDLEWARE (Applied Early)
@@ -188,8 +193,8 @@ app.get('/api/docs', (req, res) => {
     title: 'StoryLofts ContentHive API',
     version: '1.0.0',
     description: 'Professional video content platform API - Built for creators, professionals, and teams',
-    baseUrl: config.api.baseUrl,
-    environment: config.environment,
+    baseUrl: getConfigValue(config.api.baseUrl, 'http://localhost:3000'),
+    environment: getConfigValue(config.environment, 'development'),
     
     validation: {
       library: 'Zod v3.22+',
@@ -384,11 +389,11 @@ app.get('/api/docs', (req, res) => {
     },
     
     examples: {
-      'List public content': `GET ${config.api.baseUrl}/api/content?visibility=public&page=1&limit=10`,
-      'Search business videos': `GET ${config.api.baseUrl}/api/content/search?q=tutorial&tags=business,training`,
-      'Get user content': `GET ${config.api.baseUrl}/api/content (with Authorization header)`,
+      'List public content': `GET ${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/content?visibility=public&page=1&limit=10`,
+      'Search business videos': `GET ${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/content/search?q=tutorial&tags=business,training`,
+      'Get user content': `GET ${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/content (with Authorization header)`,
       'Create video content': {
-        url: `POST ${config.api.baseUrl}/api/content`,
+        url: `POST ${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/content`,
         body: {
           title: 'My Tutorial Video',
           description: 'A comprehensive tutorial on video editing',
@@ -452,7 +457,7 @@ app.get('/api/status', async (req, res) => {
       name: 'StoryLofts ContentHive API',
       version: '1.0.0',
       status: health.status,
-      environment: config.environment,
+      environment: getConfigValue(config.environment, 'development'),
       timestamp: new Date().toISOString(),
       uptime: {
         seconds: Math.floor(uptime),
@@ -491,10 +496,10 @@ app.get('/api/status', async (req, res) => {
       },
       
       endpoints: {
-        documentation: `${config.api.baseUrl}/api/docs`,
-        health: `${config.api.baseUrl}/health/detailed`,
-        content: `${config.api.baseUrl}/api/content`,
-        upload: `${config.api.baseUrl}/api/upload`
+        documentation: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/docs`,
+        health: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/health/detailed`,
+        content: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/content`,
+        upload: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/upload`
       }
     })
   } catch (error) {
@@ -515,7 +520,7 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     description: 'Professional video content platform - Built for creators, professionals, and teams',
     status: 'operational',
-    environment: config.environment,
+    environment: getConfigValue(config.environment, 'development'),
     timestamp: new Date().toISOString(),
     
     validation: {
@@ -524,17 +529,17 @@ app.get('/', (req, res) => {
     },
     
     links: {
-      documentation: `${config.api.baseUrl}/api/docs`,
-      status: `${config.api.baseUrl}/api/status`,
-      health: `${config.api.baseUrl}/health/detailed`,
-      content: `${config.api.baseUrl}/api/content`,
-      upload: `${config.api.baseUrl}/api/upload`
+      documentation: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/docs`,
+      status: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/status`,
+      health: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/health/detailed`,
+      content: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/content`,
+      upload: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/upload`
     },
     
     support: {
       website: 'https://storylofts.com',
       repository: 'https://github.com/nsr-compute/storylofts-backend',
-      documentation: `${config.api.baseUrl}/api/docs`
+      documentation: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/docs`
     },
     
     features: [
@@ -561,7 +566,7 @@ app.use('/api/*', (req, res) => {
     error: 'API endpoint not found',
     message: `The endpoint ${req.method} ${req.originalUrl} does not exist`,
     suggestion: 'Check the API documentation for available endpoints',
-    documentation: `${config.api.baseUrl}/api/docs`,
+    documentation: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/docs`,
     timestamp: new Date().toISOString(),
     requestId: req.requestId
   })
@@ -600,11 +605,11 @@ async function startServer() {
     const server = app.listen(port, () => {
       log('✨ StoryLofts ContentHive API is ready!')
       log(`🎯 Server running on port ${port}`)
-      log(`📖 Documentation: ${config.api.baseUrl || 'http://localhost:3000'}/api/docs`)
-      log(`📊 API Status: ${config.api.baseUrl || 'http://localhost:3000'}/api/status`)
-      log(`❤️  Health Check: ${config.api.baseUrl || 'http://localhost:3000'}/health/detailed`)
-      log(`🌍 Environment: ${config.environment || 'development'}`)
-      log(`🔗 Frontend: ${config.frontend.url || 'http://localhost:3001'}`)
+      log(`📖 Documentation: ${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/docs`)
+      log(`📊 API Status: ${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/status`)
+      log(`❤️  Health Check: ${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/health/detailed`)
+      log(`🌍 Environment: ${getConfigValue(config.environment, 'development')}`)
+      log(`🔗 Frontend: ${getConfigValue(config.frontend.url, 'http://localhost:3001')}`)
       log(`✅ Zod validation enabled for type-safe API requests`)
       log('🎬 Ready for professional video content management!')
     })
