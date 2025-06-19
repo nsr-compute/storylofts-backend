@@ -44,12 +44,9 @@ const getConfigValue = (value: string | undefined, defaultValue: string): string
   return value && value.trim() !== '' ? value : defaultValue
 }
 
-// Type assertion for console.log to avoid TypeScript issues
-const log = console.log as (...args: any[]) => void
-
-log('🚀 Initializing StoryLofts ContentHive API v1.0.0')
-log('🌍 Environment: ' + getConfigValue(config.environment, 'development'))
-log('🔗 Frontend URL: ' + getConfigValue(config.frontend.url, 'http://localhost:3001'))
+console.log('🚀 Initializing StoryLofts ContentHive API v1.0.0')
+console.log('🌍 Environment: ' + getConfigValue(config.environment, 'development'))
+console.log('🔗 Frontend URL: ' + getConfigValue(config.frontend.url, 'http://localhost:3001'))
 
 // ============================================================================
 // SECURITY MIDDLEWARE (Applied Early)
@@ -603,15 +600,15 @@ async function startServer() {
     // Start HTTP server
     const port = config.server.port
     const server = app.listen(port, () => {
-      log('✨ StoryLofts ContentHive API is ready!')
-      log(`🎯 Server running on port ${port}`)
-      log(`📖 Documentation: ${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/docs`)
-      log(`📊 API Status: ${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/status`)
-      log(`❤️  Health Check: ${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/health/detailed`)
-      log(`🌍 Environment: ${getConfigValue(config.environment, 'development')}`)
-      log(`🔗 Frontend: ${getConfigValue(config.frontend.url, 'http://localhost:3001')}`)
-      log(`✅ Zod validation enabled for type-safe API requests`)
-      log('🎬 Ready for professional video content management!')
+      console.log('✨ StoryLofts ContentHive API is ready!')
+      console.log(`🎯 Server running on port ${port}`)
+      console.log('📖 Documentation: ' + getConfigValue(config.api.baseUrl, 'http://localhost:3000') + '/api/docs')
+      console.log('📊 API Status: ' + getConfigValue(config.api.baseUrl, 'http://localhost:3000') + '/api/status')
+      console.log('❤️  Health Check: ' + getConfigValue(config.api.baseUrl, 'http://localhost:3000') + '/health/detailed')
+      console.log('🌍 Environment: ' + getConfigValue(config.environment, 'development'))
+      console.log('🔗 Frontend: ' + getConfigValue(config.frontend.url, 'http://localhost:3001'))
+      console.log('✅ Zod validation enabled for type-safe API requests')
+      console.log('🎬 Ready for professional video content management!')
     })
 
     // Configure server timeouts
