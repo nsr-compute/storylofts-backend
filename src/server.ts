@@ -587,17 +587,17 @@ app.use(errorHandler)
 
 async function startServer() {
   try {
-    console.log('🚀 Starting StoryLofts ContentHive API...')
+    safeLog('🚀 Starting StoryLofts ContentHive API...')
     
     // Connect to PostgreSQL database
-    console.log('🔌 Connecting to PostgreSQL database...')
+    safeLog('🔌 Connecting to PostgreSQL database...')
     await db.connect()
-    console.log('✅ Database connected successfully')
+    safeLog('✅ Database connected successfully')
     
     // Verify external services
-    console.log('🔍 Verifying external services...')
+    safeLog('🔍 Verifying external services...')
     const health = await healthService.getDetailedHealth()
-    console.log('📊 Service status:', {
+    safeLog('📊 Service status:', {
       database: health.services.database.status,
       storage: health.services.storage.status,
       auth: health.services.auth0.status
@@ -624,28 +624,28 @@ async function startServer() {
 
     // Graceful shutdown handling
     const gracefulShutdown = async (signal: string) => {
-      console.log(`\n📡 Received ${signal}. Starting graceful shutdown...`)
+      safeLog(`\n📡 Received ${signal}. Starting graceful shutdown...`)
       
       // Stop accepting new connections
       server.close(async () => {
-        console.log('🔒 HTTP server closed')
+        safeLog('🔒 HTTP server closed')
         
         try {
           // Close database connections
           await db.disconnect()
-          console.log('🔌 Database disconnected')
+          safeLog('🔌 Database disconnected')
           
-          console.log('👋 StoryLofts ContentHive API shutdown completed gracefully')
+          safeLog('👋 StoryLofts ContentHive API shutdown completed gracefully')
           process.exit(0)
         } catch (error) {
-          console.error('❌ Error during shutdown:', error)
+          safeLog('❌ Error during shutdown: ' + error)
           process.exit(1)
         }
       })
       
       // Force close after timeout
       setTimeout(() => {
-        console.error('⏰ Shutdown timeout exceeded, forcing exit')
+        safeLog('⏰ Shutdown timeout exceeded, forcing exit')
         process.exit(1)
       }, 30000) // 30 seconds
     }
@@ -656,19 +656,19 @@ async function startServer() {
     
     // Handle uncaught exceptions and rejections
     process.on('uncaughtException', (error) => {
-      console.error('❌ Uncaught Exception:', error)
+      safeLog('❌ Uncaught Exception: ' + error)
       // logSecurityEvent('Uncaught exception', { error: error.message, stack: error.stack })
       gracefulShutdown('uncaughtException')
     })
     
     process.on('unhandledRejection', (reason, promise) => {
-      console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason)
+      safeLog('❌ Unhandled Rejection at: ' + promise + ' reason: ' + reason)
       // logSecurityEvent('Unhandled rejection', { reason, promise })
       gracefulShutdown('unhandledRejection')
     })
     
   } catch (error) {
-    console.error('❌ Failed to start StoryLofts ContentHive API:', error)
+    safeLog('❌ Failed to start StoryLofts ContentHive API: ' + error)
     process.exit(1)
   }
 }

@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc",
     "build:prod": "npm install --include=dev && tsc",
+    "build:do": "NODE_ENV=development npm ci && npm run build",
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "test": "jest",
