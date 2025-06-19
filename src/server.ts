@@ -39,9 +39,12 @@ app.set('trust proxy', 1)
 // Disable X-Powered-By for security
 app.disable('x-powered-by')
 
-console.log(`🚀 Initializing StoryLofts ContentHive API v1.0.0`)
-console.log(`🌍 Environment: ${config.environment}`)
-console.log(`🔗 Frontend URL: ${config.frontend.url}`)
+// Type assertion for console.log to avoid TypeScript issues
+const log = console.log as (...args: any[]) => void
+
+log('🚀 Initializing StoryLofts ContentHive API v1.0.0')
+log('🌍 Environment: ' + (config.environment || 'development'))
+log('🔗 Frontend URL: ' + (config.frontend.url || 'http://localhost:3001'))
 
 // ============================================================================
 // SECURITY MIDDLEWARE (Applied Early)
@@ -595,15 +598,15 @@ async function startServer() {
     // Start HTTP server
     const port = config.server.port
     const server = app.listen(port, () => {
-      console.log('✨ StoryLofts ContentHive API is ready!')
-      console.log(`🎯 Server running on port ${port}`)
-      process.stdout.write(`📖 Documentation: ${config.api.baseUrl || 'http://localhost:3000'}/api/docs\n`)
-      process.stdout.write(`📊 API Status: ${config.api.baseUrl || 'http://localhost:3000'}/api/status\n`)
-      process.stdout.write(`❤️  Health Check: ${config.api.baseUrl || 'http://localhost:3000'}/health/detailed\n`)
-      process.stdout.write(`🌍 Environment: ${config.environment || 'development'}\n`)
-      process.stdout.write(`🔗 Frontend: ${config.frontend.url || 'http://localhost:3001'}\n`)
-      console.log(`✅ Zod validation enabled for type-safe API requests`)
-      console.log('🎬 Ready for professional video content management!')
+      log('✨ StoryLofts ContentHive API is ready!')
+      log(`🎯 Server running on port ${port}`)
+      log(`📖 Documentation: ${config.api.baseUrl || 'http://localhost:3000'}/api/docs`)
+      log(`📊 API Status: ${config.api.baseUrl || 'http://localhost:3000'}/api/status`)
+      log(`❤️  Health Check: ${config.api.baseUrl || 'http://localhost:3000'}/health/detailed`)
+      log(`🌍 Environment: ${config.environment || 'development'}`)
+      log(`🔗 Frontend: ${config.frontend.url || 'http://localhost:3001'}`)
+      log(`✅ Zod validation enabled for type-safe API requests`)
+      log('🎬 Ready for professional video content management!')
     })
 
     // Configure server timeouts
