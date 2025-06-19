@@ -39,20 +39,30 @@ app.set('trust proxy', 1)
 // Disable X-Powered-By for security
 app.disable('x-powered-by')
 
-// Safe config accessor to avoid TypeScript 'never' type issues
+// ============================================================================
+// CONFIGURATION & UTILITIES
+// ============================================================================
+
+// Safe config accessor with proper type handling
 const getConfigValue = (value: string | undefined, defaultValue: string): string => {
   return value && value.trim() !== '' ? value : defaultValue
 }
 
-// Simple logging function to bypass TypeScript strict typing
+// Config accessor functions for specific properties
+const getApiBaseUrl = (): string => getConfigValue(config.api.baseUrl, 'http://localhost:3000')
+const getEnvironment = (): string => getConfigValue(config.environment, 'development')
+const getFrontendUrl = (): string => getConfigValue(config.frontend.url, 'http://localhost:3001')
+const getServerPort = (): number => config.server.port || 3000
+
+// Safe logging function to avoid TypeScript strict mode issues
 const safeLog = (message: string) => {
-  // @ts-ignore
+  // @ts-ignore - Bypass strict console.log typing
   console.log(message)
 }
 
 safeLog('🚀 Initializing StoryLofts ContentHive API v1.0.0')
-safeLog('🌍 Environment: ' + getConfigValue(config.environment, 'development'))
-safeLog('🔗 Frontend URL: ' + getConfigValue(config.frontend.url, 'http://localhost:3001'))
+safeLog('🌍 Environment: ' + getEnvironment())
+safeLog('🔗 Frontend URL: ' + getFrontendUrl())
 
 // ============================================================================
 // SECURITY MIDDLEWARE (Applied Early)
@@ -137,7 +147,7 @@ app.use((req, res, next) => {
   }
 
   // Log requests (exclude health checks in production to reduce noise)
-  if (config.environment === 'development' || 
+  if (getEnvironment() === 'development' || 
       (!req.path.startsWith('/health') && !req.path.startsWith('/favicon'))) {
     console.log(`📥 REQUEST: ${method} ${path}`, logData)
   }
@@ -149,7 +159,7 @@ app.use((req, res, next) => {
     const statusCode = res.statusCode
     
     // Log slow requests or errors
-    if (config.environment === 'development' || 
+    if (getEnvironment() === 'development' || 
         duration > 1000 || 
         statusCode >= 400) {
       console.log(`📤 RESPONSE: ${method} ${path} - ${statusCode} - ${duration}ms`, {
@@ -196,8 +206,8 @@ app.get('/api/docs', (req, res) => {
     title: 'StoryLofts ContentHive API',
     version: '1.0.0',
     description: 'Professional video content platform API - Built for creators, professionals, and teams',
-    baseUrl: getConfigValue(config.api.baseUrl, 'http://localhost:3000'),
-    environment: getConfigValue(config.environment, 'development'),
+    baseUrl: getApiBaseUrl(),
+    environment: getEnvironment(),
     
     validation: {
       library: 'Zod v3.22+',
@@ -243,14 +253,14 @@ app.get('/api/docs', (req, res) => {
       },
       
       rateLimit: {
-        general: config.environment === 'development' ? '2000 requests per 15 minutes' : '200 requests per 15 minutes',
-        uploads: config.environment === 'development' ? '500 requests per hour' : '50 requests per hour',
-        authentication: config.environment === 'development' ? '200 requests per 15 minutes' : '20 requests per 15 minutes',
-        search: config.environment === 'development' ? '300 requests per minute' : '30 requests per minute'
+        general: getEnvironment() === 'development' ? '2000 requests per 15 minutes' : '200 requests per 15 minutes',
+        uploads: getEnvironment() === 'development' ? '500 requests per hour' : '50 requests per hour',
+        authentication: getEnvironment() === 'development' ? '200 requests per 15 minutes' : '20 requests per 15 minutes',
+        search: getEnvironment() === 'development' ? '300 requests per minute' : '30 requests per minute'
       },
       
       cors: {
-        allowedOrigins: config.environment === 'development' 
+        allowedOrigins: getEnvironment() === 'development' 
           ? ['https://storylofts.com', 'http://localhost:3000', 'and more...'] 
           : ['https://storylofts.com', 'https://www.storylofts.com', 'https://app.storylofts.com'],
         credentials: true,
@@ -392,11 +402,11 @@ app.get('/api/docs', (req, res) => {
     },
     
     examples: {
-      'List public content': `GET ${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/content?visibility=public&page=1&limit=10`,
-      'Search business videos': `GET ${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/content/search?q=tutorial&tags=business,training`,
-      'Get user content': `GET ${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/content (with Authorization header)`,
+      'List public content': `GET ${getApiBaseUrl()}/api/content?visibility=public&page=1&limit=10`,
+      'Search business videos': `GET ${getApiBaseUrl()}/api/content/search?q=tutorial&tags=business,training`,
+      'Get user content': `GET ${getApiBaseUrl()}/api/content (with Authorization header)`,
       'Create video content': {
-        url: `POST ${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/content`,
+        url: `POST ${getApiBaseUrl()}/api/content`,
         body: {
           title: 'My Tutorial Video',
           description: 'A comprehensive tutorial on video editing',
@@ -460,7 +470,7 @@ app.get('/api/status', async (req, res) => {
       name: 'StoryLofts ContentHive API',
       version: '1.0.0',
       status: health.status,
-      environment: getConfigValue(config.environment, 'development'),
+      environment: getEnvironment(),
       timestamp: new Date().toISOString(),
       uptime: {
         seconds: Math.floor(uptime),
@@ -499,10 +509,10 @@ app.get('/api/status', async (req, res) => {
       },
       
       endpoints: {
-        documentation: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/docs`,
-        health: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/health/detailed`,
-        content: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/content`,
-        upload: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/upload`
+        documentation: `${getApiBaseUrl()}/api/docs`,
+        health: `${getApiBaseUrl()}/health/detailed`,
+        content: `${getApiBaseUrl()}/api/content`,
+        upload: `${getApiBaseUrl()}/api/upload`
       }
     })
   } catch (error) {
@@ -523,7 +533,7 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     description: 'Professional video content platform - Built for creators, professionals, and teams',
     status: 'operational',
-    environment: getConfigValue(config.environment, 'development'),
+    environment: getEnvironment(),
     timestamp: new Date().toISOString(),
     
     validation: {
@@ -532,17 +542,17 @@ app.get('/', (req, res) => {
     },
     
     links: {
-      documentation: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/docs`,
-      status: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/status`,
-      health: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/health/detailed`,
-      content: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/content`,
-      upload: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/upload`
+      documentation: `${getApiBaseUrl()}/api/docs`,
+      status: `${getApiBaseUrl()}/api/status`,
+      health: `${getApiBaseUrl()}/health/detailed`,
+      content: `${getApiBaseUrl()}/api/content`,
+      upload: `${getApiBaseUrl()}/api/upload`
     },
     
     support: {
       website: 'https://storylofts.com',
       repository: 'https://github.com/nsr-compute/storylofts-backend',
-      documentation: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/docs`
+      documentation: `${getApiBaseUrl()}/api/docs`
     },
     
     features: [
@@ -569,7 +579,7 @@ app.use('/api/*', (req, res) => {
     error: 'API endpoint not found',
     message: `The endpoint ${req.method} ${req.originalUrl} does not exist`,
     suggestion: 'Check the API documentation for available endpoints',
-    documentation: `${getConfigValue(config.api.baseUrl, 'http://localhost:3000')}/api/docs`,
+    documentation: `${getApiBaseUrl()}/api/docs`,
     timestamp: new Date().toISOString(),
     requestId: req.requestId
   })
@@ -604,15 +614,15 @@ async function startServer() {
     })
     
     // Start HTTP server
-    const port = config.server.port
+    const port = getServerPort()
     const server = app.listen(port, () => {
       safeLog('✨ StoryLofts ContentHive API is ready!')
       safeLog(`🎯 Server running on port ${port}`)
-      safeLog('📖 Documentation: ' + getConfigValue(config.api.baseUrl, 'http://localhost:3000') + '/api/docs')
-      safeLog('📊 API Status: ' + getConfigValue(config.api.baseUrl, 'http://localhost:3000') + '/api/status')
-      safeLog('❤️  Health Check: ' + getConfigValue(config.api.baseUrl, 'http://localhost:3000') + '/health/detailed')
-      safeLog('🌍 Environment: ' + getConfigValue(config.environment, 'development'))
-      safeLog('🔗 Frontend: ' + getConfigValue(config.frontend.url, 'http://localhost:3001'))
+      safeLog('📖 Documentation: ' + getApiBaseUrl() + '/api/docs')
+      safeLog('📊 API Status: ' + getApiBaseUrl() + '/api/status')
+      safeLog('❤️  Health Check: ' + getApiBaseUrl() + '/health/detailed')
+      safeLog('🌍 Environment: ' + getEnvironment())
+      safeLog('🔗 Frontend: ' + getFrontendUrl())
       safeLog('✅ Zod validation enabled for type-safe API requests')
       safeLog('🎬 Ready for professional video content management!')
     })

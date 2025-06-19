@@ -149,23 +149,27 @@ async function loadConfig(): Promise<Config> {
 class ConfigService {
   private cachedConfig: Config | null = null;
 
+  private ensureString(value: string | undefined, defaultValue: string): string {
+    return value && value.trim() !== '' ? value : defaultValue
+  }
+
   getConfig(): Config {
     if (this.cachedConfig) {
       return this.cachedConfig;
     }
 
-    // Return synchronous config for immediate use
+    // Return synchronous config for immediate use with proper type safety
     const syncConfig: Config = {
       ...baseConfig,
       auth0: {
-        domain: process.env.AUTH0_DOMAIN || '',
-        audience: process.env.AUTH0_AUDIENCE || ''
+        domain: this.ensureString(process.env.AUTH0_DOMAIN, ''),
+        audience: this.ensureString(process.env.AUTH0_AUDIENCE, '')
       },
       backblaze: {
-        applicationKeyId: process.env.B2_APPLICATION_KEY_ID || '',
-        applicationKey: process.env.B2_APPLICATION_KEY || '',
-        bucketId: process.env.B2_BUCKET_ID || '',
-        bucketName: process.env.B2_BUCKET_NAME || ''
+        applicationKeyId: this.ensureString(process.env.B2_APPLICATION_KEY_ID, ''),
+        applicationKey: this.ensureString(process.env.B2_APPLICATION_KEY, ''),
+        bucketId: this.ensureString(process.env.B2_BUCKET_ID, ''),
+        bucketName: this.ensureString(process.env.B2_BUCKET_NAME, '')
       }
     };
 
@@ -192,17 +196,21 @@ export const configPromise = loadConfig();
 
 // For backwards compatibility, export a synchronous config object
 // This will only work if secrets are loaded from environment variables
+const ensureString = (value: string | undefined, defaultValue: string): string => {
+  return value && value.trim() !== '' ? value : defaultValue
+}
+
 export const config: Config = {
   ...baseConfig,
   auth0: {
-    domain: process.env.AUTH0_DOMAIN || '',
-    audience: process.env.AUTH0_AUDIENCE || ''
+    domain: ensureString(process.env.AUTH0_DOMAIN, ''),
+    audience: ensureString(process.env.AUTH0_AUDIENCE, '')
   },
   backblaze: {
-    applicationKeyId: process.env.B2_APPLICATION_KEY_ID || '',
-    applicationKey: process.env.B2_APPLICATION_KEY || '',
-    bucketId: process.env.B2_BUCKET_ID || '',
-    bucketName: process.env.B2_BUCKET_NAME || ''
+    applicationKeyId: ensureString(process.env.B2_APPLICATION_KEY_ID, ''),
+    applicationKey: ensureString(process.env.B2_APPLICATION_KEY, ''),
+    bucketId: ensureString(process.env.B2_BUCKET_ID, ''),
+    bucketName: ensureString(process.env.B2_BUCKET_NAME, '')
   }
 };
 

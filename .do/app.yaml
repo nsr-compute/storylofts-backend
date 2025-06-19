@@ -1,21 +1,51 @@
 # .do/app.yaml - DigitalOcean App Platform Specification
-name: storylofts-api
+name: storylofts-backend
 region: nyc
 
 services:
-  - name: contenthive-api
+  - name: storylofts-backend
     source_dir: /
     github:
       repo: nsr-compute/storylofts-backend
       branch: main
-      deploy_on_push: true
-    
-    build_command: npm run build:do
     run_command: npm start
-    
+    build_command: node scripts/build-for-production.js
     environment_slug: node-js
     instance_count: 1
     instance_size_slug: basic-xxs
+    routes:
+      - path: /
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "8080"
+      - key: API_BASE_URL
+        value: ${APP_URL}
+      - key: FRONTEND_URL
+        value: ${FRONTEND_URL}
+      - key: DATABASE_URL
+        value: ${DATABASE_URL}
+      - key: AUTH0_DOMAIN
+        value: ${AUTH0_DOMAIN}
+      - key: AUTH0_AUDIENCE
+        value: ${AUTH0_AUDIENCE}
+      - key: B2_APPLICATION_KEY_ID
+        value: ${B2_APPLICATION_KEY_ID}
+      - key: B2_APPLICATION_KEY
+        value: ${B2_APPLICATION_KEY}
+      - key: B2_BUCKET_ID
+        value: ${B2_BUCKET_ID}
+      - key: B2_BUCKET_NAME
+        value: ${B2_BUCKET_NAME}
+      - key: MAX_FILE_SIZE
+        value: "5368709120"
+      - key: ALLOWED_VIDEO_FORMATS
+        value: "mp4,mov,avi,mkv,webm"
+      - key: ALLOWED_IMAGE_FORMATS
+        value: "jpg,jpeg,png,webp"
+      - key: USE_GOOGLE_SECRET_MANAGER
+        value: "false"
     
     # Custom domains
     domains:
@@ -23,76 +53,6 @@ services:
         type: PRIMARY
         wildcard: false
         certificate_type: LETS_ENCRYPT
-    
-    # Environment variables
-    envs:
-      - key: NODE_ENV
-        value: production
-        type: GENERAL
-      
-      - key: PORT
-        value: "3000"
-        type: GENERAL
-      
-      - key: API_BASE_URL
-        value: https://api.storylofts.com
-        type: GENERAL
-      
-      - key: FRONTEND_URL
-        value: https://storylofts.com
-        type: GENERAL
-      
-      # Google Secret Manager settings
-      - key: USE_GOOGLE_SECRET_MANAGER
-        value: "true"
-        type: GENERAL
-      
-      - key: GOOGLE_CLOUD_PROJECT_ID
-        value: storylofts-secrets
-        type: GENERAL
-      
-      # Google Cloud credentials (from GitHub secrets)
-      - key: GOOGLE_APPLICATION_CREDENTIALS_JSON
-        value: ${GOOGLE_APPLICATION_CREDENTIALS_JSON}
-        type: SECRET
-      
-      # Upload configuration
-      - key: MAX_FILE_SIZE
-        value: "5368709120"
-        type: GENERAL
-      
-      - key: ALLOWED_VIDEO_FORMATS
-        value: mp4,mov,avi,mkv,webm
-        type: GENERAL
-      
-      - key: ALLOWED_IMAGE_FORMATS
-        value: jpg,jpeg,png,webp
-        type: GENERAL
-      
-      # Fallback secrets (if Secret Manager fails)
-      - key: AUTH0_DOMAIN
-        value: ${AUTH0_DOMAIN}
-        type: SECRET
-      
-      - key: AUTH0_AUDIENCE
-        value: ${AUTH0_AUDIENCE}
-        type: SECRET
-      
-      - key: B2_APPLICATION_KEY_ID
-        value: ${B2_APPLICATION_KEY_ID}
-        type: SECRET
-      
-      - key: B2_APPLICATION_KEY
-        value: ${B2_APPLICATION_KEY}
-        type: SECRET
-      
-      - key: B2_BUCKET_ID
-        value: ${B2_BUCKET_ID}
-        type: SECRET
-      
-      - key: B2_BUCKET_NAME
-        value: ${B2_BUCKET_NAME}
-        type: SECRET
     
     # Health check configuration
     health_check:
@@ -104,4 +64,4 @@ services:
       failure_threshold: 3
     
     # HTTP configuration
-    http_port: 3000
+    http_port: 8080
