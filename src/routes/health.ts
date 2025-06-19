@@ -119,14 +119,9 @@ router.get('/detailed',
   validate(healthQuerySchema),
   async (req: Request, res: Response) => {
     try {
-      const { timeout, includeDetails } = req.query as any;
       const startTime = Date.now();
       
-      // FIXED: Pass options object instead of individual parameters
-      const healthCheck = await healthCheckService.runAllChecks({
-        timeout: Number(timeout),
-        includeDetails: Boolean(includeDetails)
-      });
+      const healthCheck = await healthCheckService.runAllChecks();
       
       const responseTime = Date.now() - startTime;
 
@@ -178,13 +173,9 @@ router.get('/auth0',
   validate(healthQuerySchema),
   async (req: Request, res: Response) => {
     try {
-      const { timeout } = req.query as any;
       const startTime = Date.now();
       
-      // FIXED: Pass options object instead of individual parameter
-      const auth0Status = await healthCheckService.checkAuth0({ 
-        timeout: Number(timeout) 
-      });
+      const auth0Status = await healthCheckService.checkAuth0();
       const responseTime = Date.now() - startTime;
       const statusCode = auth0Status.status === 'healthy' ? 200 : 503;
       
@@ -226,13 +217,9 @@ router.get('/secrets',
   validate(healthQuerySchema),
   async (req: Request, res: Response) => {
     try {
-      const { timeout } = req.query as any;
       const startTime = Date.now();
       
-      // FIXED: Pass options object instead of individual parameter
-      const secretsStatus = await healthCheckService.checkSecretManager({ 
-        timeout: Number(timeout) 
-      });
+      const secretsStatus = await healthCheckService.checkSecretManager();
       const responseTime = Date.now() - startTime;
       const statusCode = secretsStatus.status === 'healthy' ? 200 : 503;
       
@@ -274,13 +261,9 @@ router.get('/storage',
   validate(healthQuerySchema),
   async (req: Request, res: Response) => {
     try {
-      const { timeout } = req.query as any;
       const startTime = Date.now();
       
-      // FIXED: Pass options object instead of individual parameter
-      const storageStatus = await healthCheckService.checkBackblaze({ 
-        timeout: Number(timeout) 
-      });
+      const storageStatus = await healthCheckService.checkBackblaze();
       const responseTime = Date.now() - startTime;
       const statusCode = storageStatus.status === 'healthy' ? 200 : 503;
       
@@ -322,13 +305,9 @@ router.get('/database',
   validate(healthQuerySchema),
   async (req: Request, res: Response) => {
     try {
-      const { timeout } = req.query as any;
       const startTime = Date.now();
       
-      // FIXED: Pass options object instead of individual parameter
-      const databaseStatus = await healthCheckService.checkDatabase({ 
-        timeout: Number(timeout) 
-      });
+      const databaseStatus = await healthCheckService.checkDatabase();
       const responseTime = Date.now() - startTime;
       const statusCode = databaseStatus.status === 'healthy' ? 200 : 503;
       
@@ -372,7 +351,6 @@ router.get('/metrics',
       const { format, services } = req.query as any;
       const startTime = Date.now();
       
-      // FIXED: Call runAllChecks without parameters
       const healthCheck = await healthCheckService.runAllChecks();
       const responseTime = Date.now() - startTime;
 
@@ -468,8 +446,8 @@ router.get('/readiness', async (req: Request, res: Response) => {
     // FIXED: Check if checkReadiness method exists before calling
     let isReady = true;
     
-    if (typeof healthCheckService.checkReadiness === 'function') {
-      isReady = await healthCheckService.checkReadiness();
+    if (typeof (healthCheckService as any).checkReadiness === 'function') {
+      isReady = await (healthCheckService as any).checkReadiness();
     } else {
       // Fallback: check basic health if checkReadiness doesn't exist
       const health = await healthCheckService.getBasicHealth();

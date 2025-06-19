@@ -88,11 +88,16 @@ const buildErrorResponse = (err: CustomError, req: Request, requestId: string | 
 
   // Zod validation errors - Enhanced handling
   if (err instanceof ZodError) {
-    const zodErrors = err.errors.map(zodError => ({
-      path: zodError.path.join('.'),
-      message: zodError.message,
-      received: zodError.received
-    }))
+    const zodErrors = err.errors.map(zodError => {
+      const errorDetails: { path: string; message: string; received?: unknown } = {
+          path: zodError.path.join('.'),
+          message: zodError.message,
+      };
+      if ('received' in zodError) {
+          errorDetails.received = zodError.received;
+      }
+      return errorDetails;
+    });
 
     return {
       success: false,
