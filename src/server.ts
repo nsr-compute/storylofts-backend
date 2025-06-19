@@ -1,4 +1,4 @@
-// src/server.ts - StoryLofts ContentHive API Server (FIXED TypeScript Issues)
+// src/server.ts - StoryLofts ContentHive API Server (COMPREHENSIVE FIX)
 import express from 'express'
 import compression from 'compression'
 import cors from 'cors'
@@ -26,12 +26,37 @@ import contentRoutes from './routes/content'
 import uploadRoutes from './routes/upload'
 import healthRoutes from './routes/health'
 
+// FIXED: Extend Express Request interface properly
+declare global {
+  namespace Express {
+    interface Request {
+      requestId?: string;
+      rawBody?: Buffer;
+    }
+  }
+}
+
 // ============================================================================
 // APPLICATION SETUP
 // ============================================================================
 
 const app = express()
-const config = configService.getConfig()
+
+// FIXED: Get config with proper async handling and type safety
+let config: any = {}
+try {
+  config = configService.getConfig()
+} catch (error) {
+  console.error('Failed to load configuration:', error)
+  // Use fallback configuration
+  config = {
+    server: { port: 3000 },
+    environment: 'development',
+    api: { baseUrl: 'http://localhost:3000' },
+    frontend: { url: 'http://localhost:3001' },
+    auth0: { audience: 'storylofts-api' }
+  }
+}
 
 // Trust proxy (critical for DigitalOcean App Platform)
 app.set('trust proxy', 1)
@@ -39,10 +64,9 @@ app.set('trust proxy', 1)
 // Disable X-Powered-By for security
 app.disable('x-powered-by')
 
-// FIXED: Safe logging without type assertions
 console.log('🚀 Initializing StoryLofts ContentHive API v1.0.0')
-console.log('🌍 Environment: ' + (config.environment || 'development'))
-console.log('🔗 Frontend URL: ' + (config.frontend.url || 'http://localhost:3001'))
+console.log('🌍 Environment:', config.environment || 'development')
+console.log('🔗 Frontend URL:', config.frontend?.url || 'http://localhost:3001')
 
 // ============================================================================
 // SECURITY MIDDLEWARE (Applied Early)
@@ -60,8 +84,7 @@ app.use(securityHeadersMiddleware)
 app.use(compression())
 app.use(express.json({ 
   limit: '10mb',
-  verify: (req: any, res, buf) => {
-    // Store raw body for webhook verification if needed
+  verify: (req: express.Request, res: express.Response, buf: Buffer) => {
     req.rawBody = buf
   }
 }))
@@ -110,7 +133,7 @@ app.use((req, res, next) => {
   const path = req.path
   const ip = req.ip
   const userAgent = req.get('User-Agent') || 'Unknown'
-  const requestId = (req as any).requestId
+  const requestId = req.requestId
 
   // Enhanced logging with user context
   const logData = {
@@ -126,7 +149,8 @@ app.use((req, res, next) => {
   }
 
   // Log requests (exclude health checks in production to reduce noise)
-  if (config.environment === 'development' || 
+  const environment = config.environment || 'development'
+  if (environment === 'development' || 
       (!req.path.startsWith('/health') && !req.path.startsWith('/favicon'))) {
     console.log(`📥 REQUEST: ${method} ${path}`, logData)
   }
@@ -138,7 +162,7 @@ app.use((req, res, next) => {
     const statusCode = res.statusCode
     
     // Log slow requests or errors
-    if (config.environment === 'development' || 
+    if (environment === 'development' || 
         duration > 1000 || 
         statusCode >= 400) {
       console.log(`📤 RESPONSE: ${method} ${path} - ${statusCode} - ${duration}ms`, {
@@ -170,14 +194,18 @@ app.use('/api/upload', authenticateToken, uploadRoutes)
 // API DOCUMENTATION & STATUS
 // ============================================================================
 
-// Enhanced API documentation with Zod validation details
+// FIXED: Safe property access for documentation endpoint
 app.get('/api/docs', (req, res) => {
+  const baseUrl = config.api?.baseUrl || 'http://localhost:3000'
+  const environment = config.environment || 'development'
+  const audience = config.auth0?.audience || 'storylofts-api'
+  
   const docs = {
     title: 'StoryLofts ContentHive API',
     version: '1.0.0',
     description: 'Professional video content platform API - Built for creators, professionals, and teams',
-    baseUrl: config.api.baseUrl || 'http://localhost:3000',
-    environment: config.environment || 'development',
+    baseUrl,
+    environment,
     
     validation: {
       library: 'Zod v3.22+',
@@ -195,18 +223,18 @@ app.get('/api/docs', (req, res) => {
         type: 'Bearer token (Auth0 JWT)',
         header: 'Authorization: Bearer <token>',
         provider: 'Auth0',
-        audience: config.auth0?.audience || 'storylofts-api'
+        audience
       },
       
       rateLimit: {
-        general: config.environment === 'development' ? '2000 requests per 15 minutes' : '200 requests per 15 minutes',
-        uploads: config.environment === 'development' ? '500 requests per hour' : '50 requests per hour',
-        authentication: config.environment === 'development' ? '200 requests per 15 minutes' : '20 requests per 15 minutes',
-        search: config.environment === 'development' ? '300 requests per minute' : '30 requests per minute'
+        general: environment === 'development' ? '2000 requests per 15 minutes' : '200 requests per 15 minutes',
+        uploads: environment === 'development' ? '500 requests per hour' : '50 requests per hour',
+        authentication: environment === 'development' ? '200 requests per 15 minutes' : '20 requests per 15 minutes',
+        search: environment === 'development' ? '300 requests per minute' : '30 requests per minute'
       },
       
       cors: {
-        allowedOrigins: config.environment === 'development' 
+        allowedOrigins: environment === 'development' 
           ? ['https://storylofts.com', 'http://localhost:3000', 'and more...'] 
           : ['https://storylofts.com', 'https://www.storylofts.com', 'https://app.storylofts.com'],
         credentials: true,
@@ -251,17 +279,19 @@ app.get('/api/docs', (req, res) => {
   res.json(docs)
 })
 
-// API status endpoint with comprehensive health info
+// FIXED: Safe property access for status endpoint
 app.get('/api/status', async (req, res) => {
   try {
     const health = await healthService.getDetailedHealth()
     const uptime = process.uptime()
+    const baseUrl = config.api?.baseUrl || 'http://localhost:3000'
+    const environment = config.environment || 'development'
     
     res.json({
       name: 'StoryLofts ContentHive API',
       version: '1.0.0',
       status: health.status,
-      environment: config.environment || 'development',
+      environment,
       timestamp: new Date().toISOString(),
       uptime: {
         seconds: Math.floor(uptime),
@@ -300,10 +330,10 @@ app.get('/api/status', async (req, res) => {
       },
       
       endpoints: {
-        documentation: `${config.api.baseUrl || 'http://localhost:3000'}/api/docs`,
-        health: `${config.api.baseUrl || 'http://localhost:3000'}/health/detailed`,
-        content: `${config.api.baseUrl || 'http://localhost:3000'}/api/content`,
-        upload: `${config.api.baseUrl || 'http://localhost:3000'}/api/upload`
+        documentation: `${baseUrl}/api/docs`,
+        health: `${baseUrl}/health/detailed`,
+        content: `${baseUrl}/api/content`,
+        upload: `${baseUrl}/api/upload`
       }
     })
   } catch (error) {
@@ -317,14 +347,17 @@ app.get('/api/status', async (req, res) => {
   }
 })
 
-// Root endpoint with API information
+// FIXED: Safe property access for root endpoint
 app.get('/', (req, res) => {
+  const baseUrl = config.api?.baseUrl || 'http://localhost:3000'
+  const environment = config.environment || 'development'
+  
   res.json({
     name: 'StoryLofts ContentHive API',
     version: '1.0.0',
     description: 'Professional video content platform - Built for creators, professionals, and teams',
     status: 'operational',
-    environment: config.environment || 'development',
+    environment,
     timestamp: new Date().toISOString(),
     
     validation: {
@@ -333,17 +366,17 @@ app.get('/', (req, res) => {
     },
     
     links: {
-      documentation: `${config.api.baseUrl || 'http://localhost:3000'}/api/docs`,
-      status: `${config.api.baseUrl || 'http://localhost:3000'}/api/status`,
-      health: `${config.api.baseUrl || 'http://localhost:3000'}/health/detailed`,
-      content: `${config.api.baseUrl || 'http://localhost:3000'}/api/content`,
-      upload: `${config.api.baseUrl || 'http://localhost:3000'}/api/upload`
+      documentation: `${baseUrl}/api/docs`,
+      status: `${baseUrl}/api/status`,
+      health: `${baseUrl}/health/detailed`,
+      content: `${baseUrl}/api/content`,
+      upload: `${baseUrl}/api/upload`
     },
     
     support: {
       website: 'https://storylofts.com',
       repository: 'https://github.com/nsr-compute/storylofts-backend',
-      documentation: `${config.api.baseUrl || 'http://localhost:3000'}/api/docs`
+      documentation: `${baseUrl}/api/docs`
     },
     
     features: [
@@ -365,14 +398,16 @@ app.get('/', (req, res) => {
 
 // 404 handler for API routes
 app.use('/api/*', (req, res) => {
+  const baseUrl = config.api?.baseUrl || 'http://localhost:3000'
+  
   res.status(404).json({
     success: false,
     error: 'API endpoint not found',
     message: `The endpoint ${req.method} ${req.originalUrl} does not exist`,
     suggestion: 'Check the API documentation for available endpoints',
-    documentation: `${config.api.baseUrl || 'http://localhost:3000'}/api/docs`,
+    documentation: `${baseUrl}/api/docs`,
     timestamp: new Date().toISOString(),
-    requestId: (req as any).requestId
+    requestId: req.requestId
   })
 })
 
@@ -406,14 +441,18 @@ async function startServer() {
     
     // Start HTTP server
     const port = config.server?.port || 3000
+    const baseUrl = config.api?.baseUrl || 'http://localhost:3000'
+    const frontendUrl = config.frontend?.url || 'http://localhost:3001'
+    const environment = config.environment || 'development'
+    
     const server = app.listen(port, () => {
       console.log('✨ StoryLofts ContentHive API is ready!')
       console.log(`🎯 Server running on port ${port}`)
-      console.log(`📖 Documentation: ${config.api?.baseUrl || 'http://localhost:3000'}/api/docs`)
-      console.log(`📊 API Status: ${config.api?.baseUrl || 'http://localhost:3000'}/api/status`)
-      console.log(`❤️  Health Check: ${config.api?.baseUrl || 'http://localhost:3000'}/health/detailed`)
-      console.log(`🌍 Environment: ${config.environment || 'development'}`)
-      console.log(`🔗 Frontend: ${config.frontend?.url || 'http://localhost:3001'}`)
+      console.log(`📖 Documentation: ${baseUrl}/api/docs`)
+      console.log(`📊 API Status: ${baseUrl}/api/status`)
+      console.log(`❤️  Health Check: ${baseUrl}/health/detailed`)
+      console.log(`🌍 Environment: ${environment}`)
+      console.log(`🔗 Frontend: ${frontendUrl}`)
       console.log('✅ Zod validation enabled for type-safe API requests')
       console.log('🎬 Ready for professional video content management!')
     })
@@ -482,7 +521,7 @@ function formatUptime(seconds: number): string {
   const minutes = Math.floor((seconds % 3600) / 60)
   const secs = Math.floor(seconds % 60)
   
-  const parts = []
+  const parts: string[] = []
   if (days > 0) parts.push(`${days}d`)
   if (hours > 0) parts.push(`${hours}h`)
   if (minutes > 0) parts.push(`${minutes}m`)
