@@ -1,120 +1,134 @@
-# StoryLofts ContentHive Backend API
+# StoryLofts Backend API
 
-> Backend API for StoryLofts - a premium video content platform for professionals
+> **A premium video content management platform for professional creators**
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/nsr-compute/storylofts-backend)
-[![API Status](https://img.shields.io/badge/api-live-brightgreen)](https://api.storylofts.com/health)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.3.3-blue)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-18+-green)](https://nodejs.org/)
+StoryLofts ContentHive is a professional-grade video content management API designed for creators who value quality over quantity. Think "Vimeo for professionals, not YouTube for everyone" - focusing on curated storytelling and premium content experiences.
 
-## 🎯 Overview
+## 🚀 Live Services
 
-StoryLofts ContentHive is a professional-grade video content management API built for creators who value quality over quantity. Think "Vimeo for professionals, not YouTube for everyone" - focusing on curated storytelling and premium content experiences.
+- **API Endpoint**: [https://api.storylofts.com](https://api.storylofts.com)
+- **Platform**: [https://storylofts.com](https://storylofts.com)
+- **API Documentation**: [https://api.storylofts.com/api/docs](https://api.storylofts.com/api/docs)
+- **Health Status**: [https://api.storylofts.com/health](https://api.storylofts.com/health)
 
-**Live API**: [https://api.storylofts.com](https://api.storylofts.com)
+## ✨ Key Features
 
-## ✨ Features
+- 🔐 **Secure Authentication** - Auth0 JWT integration with RS256 algorithm
+- 📁 **Advanced File Management** - Direct and pre-signed URL uploads to Backblaze B2
+- 🎥 **Video Content CRUD** - Complete content management with rich metadata
+- 🏥 **Comprehensive Health Monitoring** - Multi-service health checks and metrics
+- 🚀 **Production Ready** - Security middleware, rate limiting, and error handling
+- 🌐 **Multi-Cloud Support** - Docker containerized for deployment anywhere
+- 📊 **Monitoring & Metrics** - Prometheus integration and detailed health endpoints
 
-- 🔐 **Secure Authentication** - Auth0 JWT integration
-- 📁 **File Upload Management** - Direct and pre-signed URL uploads to Backblaze B2
-- 🎥 **Video Content CRUD** - Complete content management with metadata
-- 🏥 **Health Monitoring** - Comprehensive service health checks
-- 🚀 **Production Ready** - Security middleware, rate limiting, error handling
-- 🌐 **Multi-Cloud Support** - Docker containerized for any cloud provider
-- 📊 **Monitoring** - Prometheus metrics and detailed health endpoints
+## 🛠 Tech Stack
 
-## 🛠️ Tech Stack
+| Component | Technology |
+|-----------|------------|
+| **Runtime** | Node.js 18+ with TypeScript |
+| **Framework** | Express.js with comprehensive middleware |
+| **Authentication** | Auth0 JWT tokens (RS256) |
+| **File Storage** | Backblaze B2 cloud storage |
+| **Secret Management** | Google Secret Manager (optional) |
+| **Hosting** | DigitalOcean App Platform (cloud-agnostic) |
+| **Containerization** | Docker with multi-stage builds |
+| **Monitoring** | Prometheus metrics |
 
-- **Runtime**: Node.js 18+ with TypeScript
-- **Framework**: Express.js with comprehensive middleware
-- **Authentication**: Auth0 JWT tokens
-- **File Storage**: Backblaze B2 cloud storage
-- **Secret Management**: Google Secret Manager (optional)
-- **Hosting**: DigitalOcean App Platform (cloud-agnostic)
-- **Containerization**: Docker with multi-stage builds
+## 📋 Prerequisites
+
+- Node.js 18+ and npm 8+
+- Auth0 account and application configured
+- Backblaze B2 bucket and credentials
+- (Optional) Google Cloud Project for Secret Manager
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### 1. Clone and Install
 
-- Node.js 18+
-- npm 8+
-- Auth0 account and application
-- Backblaze B2 bucket and credentials
+```bash
+git clone https://github.com/nsr-compute/storylofts-backend.git
+cd storylofts-backend
+npm install
+```
 
-### Local Development
+### 2. Configure Environment
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/nsr-compute/storylofts-backend.git
-   cd storylofts-backend
-   ```
+```bash
+cp .env.example .env
+# Edit .env with your credentials (see Environment Variables section)
+```
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+### 3. Start Development Server
 
-3. **Configure environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your credentials
-   ```
+```bash
+npm run dev
+```
 
-4. **Run development server**
-   ```bash
-   npm run dev
-   ```
+### 4. Verify Installation
 
-5. **Test the API**
-   ```bash
-   curl http://localhost:3000/health
-   curl http://localhost:3000/api/docs
-   ```
+```bash
+# Check API health
+curl http://localhost:3000/health
 
-### Environment Variables
+# View API documentation
+curl http://localhost:3000/api/docs
+```
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `NODE_ENV` | Runtime environment | ✅ |
-| `PORT` | Server port | ✅ |
-| `AUTH0_DOMAIN` | Auth0 tenant domain | ✅ |
-| `AUTH0_AUDIENCE` | Auth0 API identifier | ✅ |
-| `B2_APPLICATION_KEY_ID` | Backblaze B2 key ID | ✅ |
-| `B2_APPLICATION_KEY` | Backblaze B2 application key | ✅ |
-| `B2_BUCKET_ID` | Backblaze B2 bucket ID | ✅ |
-| `B2_BUCKET_NAME` | Backblaze B2 bucket name | ✅ |
-| `USE_GOOGLE_SECRET_MANAGER` | Enable secret manager | ⭐ |
-| `GOOGLE_CLOUD_PROJECT_ID` | GCP project for secrets | ⭐ |
+## 🔧 Environment Variables
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `NODE_ENV` | Runtime environment (development/production) | ✅ | - |
+| `PORT` | Server port | ✅ | 3000 |
+| `AUTH0_DOMAIN` | Auth0 tenant domain | ✅ | - |
+| `AUTH0_AUDIENCE` | Auth0 API identifier | ✅ | - |
+| `B2_APPLICATION_KEY_ID` | Backblaze B2 key ID | ✅ | - |
+| `B2_APPLICATION_KEY` | Backblaze B2 application key | ✅ | - |
+| `B2_BUCKET_ID` | Backblaze B2 bucket ID | ✅ | - |
+| `B2_BUCKET_NAME` | Backblaze B2 bucket name | ✅ | - |
+| `USE_GOOGLE_SECRET_MANAGER` | Enable Google Secret Manager | ⭐ | false |
+| `GOOGLE_CLOUD_PROJECT_ID` | GCP project for secrets | ⭐ | - |
 
 *⭐ = Optional*
 
 ## 📡 API Endpoints
 
 ### Health & Monitoring
-- `GET /health` - Basic health check
-- `GET /health/detailed` - Comprehensive service health
-- `GET /health/auth0` - Auth0 connectivity check
-- `GET /health/storage` - Backblaze B2 status
-- `GET /health/secrets` - Secret Manager status
-- `GET /health/metrics` - Prometheus metrics
 
-### Upload Management
-- `GET /api/upload/url` - Get pre-signed upload URL
-- `POST /api/upload/direct` - Direct upload to server
-- `POST /api/upload/complete` - Complete upload process
-- `GET /api/upload/status/:id` - Get upload status
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Basic health check |
+| `GET /health/detailed` | Comprehensive service health |
+| `GET /health/auth0` | Auth0 connectivity check |
+| `GET /health/storage` | Backblaze B2 status |
+| `GET /health/secrets` | Secret Manager status |
+| `GET /health/metrics` | Prometheus metrics |
 
-### Content Management
-- `GET /api/content` - List videos (paginated)
-- `GET /api/content/:id` - Get specific video
-- `PUT /api/content/:id` - Update video metadata
-- `DELETE /api/content/:id` - Delete video
-- `GET /api/content/user/:userId` - Get user videos
+### File Upload Management
 
-### Documentation
-- `GET /api/docs` - API documentation
-- `GET /` - API information and endpoints
+| Endpoint | Method | Description | Auth Required |
+|----------|--------|-------------|---------------|
+| `/api/upload/url` | GET | Get pre-signed upload URL | ✅ |
+| `/api/upload/direct` | POST | Direct upload to server | ✅ |
+| `/api/upload/complete` | POST | Complete upload process | ✅ |
+| `/api/upload/status/:id` | GET | Get upload status | ✅ |
+
+### Video Content Management
+
+| Endpoint | Method | Description | Auth Required |
+|----------|--------|-------------|---------------|
+| `/api/content` | GET | List videos (paginated) | ✅ |
+| `/api/content/:id` | GET | Get specific video | ✅ |
+| `/api/content/:id` | PUT | Update video metadata | ✅ |
+| `/api/content/:id` | DELETE | Delete video | ✅ |
+| `/api/content/user/:userId` | GET | Get user videos | ✅ |
+
+### Documentation & Information
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/docs` | Interactive API documentation |
+| `GET /` | API information and endpoints |
 
 ## 🔐 Authentication
 
@@ -125,30 +139,28 @@ curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
      https://api.storylofts.com/api/content
 ```
 
-### Required Auth0 Configuration
+### Auth0 Configuration
 
 - **Domain**: Your Auth0 tenant domain
 - **Audience**: API identifier for your application
-- **Algorithm**: RS256 (default)
+- **Algorithm**: RS256 (default for security)
 
 ## 🏥 Health Monitoring
 
-### Service Dependencies
+The API continuously monitors connectivity to all external services:
 
-The API monitors connectivity to:
+- **Auth0** - Authentication service availability
+- **Backblaze B2** - File storage connectivity and authorization
+- **Google Secret Manager** - Secure credential access (if enabled)
+- **Database** - Currently in-memory, PostgreSQL migration planned
 
-1. **Auth0** - Authentication service availability
-2. **Backblaze B2** - File storage connectivity and authorization
-3. **Google Secret Manager** - Secure credential access (if enabled)
-4. **Database** - Currently in-memory, PostgreSQL migration planned
-
-### Health Check Response
+### Sample Health Response
 
 ```json
 {
   "success": true,
   "overall": "healthy",
-  "timestamp": "2025-06-15T10:30:00.000Z",
+  "timestamp": "2025-06-20T10:30:00.000Z",
   "uptime": 3600000,
   "services": [
     {
@@ -172,7 +184,7 @@ The API monitors connectivity to:
 
 ## 🐳 Docker Deployment
 
-### Build and Run Locally
+### Build and Run
 
 ```bash
 # Build the image
@@ -182,6 +194,7 @@ docker build -t storylofts-api .
 docker run -p 3000:3000 \
   -e NODE_ENV=production \
   -e AUTH0_DOMAIN=your-domain.auth0.com \
+  -e AUTH0_AUDIENCE=your-api-audience \
   storylofts-api
 ```
 
@@ -195,44 +208,34 @@ docker-compose up -d
 docker-compose logs -f storylofts-api
 ```
 
-## ☁️ Cloud Deployment
+## ☁️ Multi-Cloud Deployment
 
-### DigitalOcean App Platform (Current)
+The API is designed to run on any cloud platform:
 
-1. Connect GitHub repository
-2. Configure environment variables
+| Platform | Deployment Time | Use Case |
+|----------|-----------------|----------|
+| **DigitalOcean App Platform** | 5 minutes | Current production hosting |
+| **Railway** | 5 minutes | Rapid prototyping |
+| **Google Cloud Run** | 10 minutes | Serverless auto-scaling |
+| **AWS ECS/Fargate** | 15 minutes | Enterprise container orchestration |
+| **Fly.io** | 10 minutes | Global edge deployment |
+| **Azure Container Instances** | 15 minutes | Microsoft ecosystem |
+
+### Quick DigitalOcean Deployment
+
+1. Connect GitHub repository to DigitalOcean
+2. Configure environment variables in the dashboard
 3. Deploy automatically on git push
 
-### Multi-Cloud Support
+See [deployment documentation](docs/multi-cloud-deployment.md) for detailed platform-specific guides.
 
-The API is designed to run anywhere:
-
-- **Railway**: 5-minute deployment
-- **Google Cloud Run**: Serverless with auto-scaling
-- **AWS ECS/Fargate**: Enterprise container orchestration
-- **Fly.io**: Global edge deployment
-- **Azure Container Instances**: Microsoft ecosystem
-
-See [deployment documentation](docs/multi-cloud-deployment.md) for detailed guides.
-
-## 🔧 Development
-
-### Available Scripts
-
-- `npm run dev` - Start development server with hot reload
-- `npm run build` - Build TypeScript to JavaScript
-- `npm start` - Start production server
-- `npm test` - Run test suite
-- `npm run lint` - Lint TypeScript code
-- `npm run lint:fix` - Fix linting errors
-
-### Project Structure
+## 📁 Project Structure
 
 ```
 storylofts-backend/
 ├── src/
 │   ├── config/           # Configuration management
-│   ├── middleware/       # Express middleware (auth, etc.)
+│   ├── middleware/       # Express middleware (auth, rate limiting, etc.)
 │   ├── routes/          # API route handlers
 │   ├── services/        # Business logic services
 │   ├── types/           # TypeScript type definitions
@@ -241,100 +244,152 @@ storylofts-backend/
 ├── scripts/             # Utility scripts
 ├── .github/workflows/   # CI/CD pipelines
 ├── .do/                 # DigitalOcean deployment config
-└── docs/                # Additional documentation
+├── docs/                # Additional documentation
+├── docker-compose.yml   # Local development setup
+├── Dockerfile           # Production container
+└── package.json         # Dependencies and scripts
 ```
 
-### Code Style
+## 🔧 Available Scripts
 
-- **TypeScript**: Strict mode enabled
-- **ESLint**: Airbnb configuration
-- **Prettier**: Automatic code formatting
-- **Conventional Commits**: Standardized commit messages
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start development server with hot reload |
+| `npm run build` | Build TypeScript to JavaScript |
+| `npm start` | Start production server |
+| `npm test` | Run test suite |
+| `npm run lint` | Lint TypeScript code |
+| `npm run lint:fix` | Fix linting errors automatically |
 
-## 🚦 Rate Limiting
+## 🛡️ Security Features
+
+### Rate Limiting
 
 - **General API**: 100 requests per 15 minutes
 - **Upload endpoints**: 10 uploads per hour
 - **Health checks**: 30 requests per minute
 
-## 🔒 Security Features
+### Security Middleware
 
-- **Helmet.js**: Security headers
+- **Helmet.js**: Comprehensive security headers
 - **CORS**: Configured for StoryLofts domains
-- **JWT Validation**: Auth0 token verification
+- **JWT Validation**: Auth0 token verification with RS256
 - **Input Validation**: Express-validator middleware
-- **Rate Limiting**: Prevent abuse
-- **Error Handling**: Secure error responses
+- **Error Handling**: Secure error responses without sensitive data exposure
 
 ## 📊 Monitoring & Observability
 
-### Built-in Monitoring
+### Built-in Metrics
 
-- Service health checks
-- Response time tracking
-- Error rate monitoring
-- Uptime tracking
+- Service health status monitoring
+- Response time tracking across all endpoints
+- Error rate monitoring and alerting
+- Application uptime tracking
+- External service dependency monitoring
 
-### External Monitoring
+### Integration Options
 
-Compatible with:
-- **Prometheus**: `/health/metrics` endpoint
-- **DataDog**: Custom metrics integration
-- **Uptime Robot**: Simple HTTP monitoring
-- **DigitalOcean Monitoring**: Built-in app metrics
+| Platform | Endpoint/Method | Description |
+|----------|-----------------|-------------|
+| **Prometheus** | `/health/metrics` | Standard metrics endpoint |
+| **DataDog** | Custom integration | Advanced APM and logging |
+| **Uptime Robot** | `/health` | Simple HTTP monitoring |
+| **DigitalOcean Monitoring** | Built-in | Native app metrics |
 
-## 🗺️ Roadmap
+## 🚧 Development Standards
 
-### Near Term
-- [ ] PostgreSQL database migration
+### Code Quality
+
+- **TypeScript**: Strict mode enabled for type safety
+- **ESLint**: Airbnb configuration for consistent code style
+- **Prettier**: Automatic code formatting
+- **Conventional Commits**: Standardized commit messages
+
+### Testing Standards
+
+- Write comprehensive tests for new features
+- Maintain test coverage above 80%
+- Include integration tests for external services
+- Add health checks for new external dependencies
+
+## 📈 Roadmap
+
+### Immediate (Q3 2025)
+
+- [ ] PostgreSQL database migration from in-memory storage
+- [ ] Enhanced search and filtering capabilities
 - [ ] Advanced file processing (thumbnails, transcoding)
-- [ ] Enhanced search and filtering
-- [ ] Analytics and usage metrics
+- [ ] Analytics and usage metrics dashboard
 
-### Future Enhancements
-- [ ] Multi-region deployment
+### Medium-term (Q4 2025)
+
+- [ ] Multi-region deployment strategy
 - [ ] CDN integration for global content delivery
-- [ ] Advanced user management
-- [ ] Webhook system for integrations
-- [ ] GraphQL API layer
+- [ ] Advanced user management and permissions
+- [ ] Webhook system for third-party integrations
+
+### Long-term (2026)
+
+- [ ] GraphQL API layer alongside REST
+- [ ] Machine learning-powered content recommendations
+- [ ] Advanced video analytics and insights
+- [ ] Enterprise SSO integration beyond Auth0
 
 ## 🤝 Contributing
 
+We welcome contributions! Please follow these guidelines:
+
+### Getting Started
+
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes following our coding standards
+4. Write tests for new functionality
+5. Update documentation as needed
+6. Commit using conventional commit format: `git commit -m 'feat: add amazing feature'`
+7. Push to your branch: `git push origin feature/amazing-feature`
+8. Open a Pull Request with a clear description
 
 ### Development Guidelines
 
-- Write tests for new features
-- Update documentation
-- Follow TypeScript/ESLint conventions
+- Follow TypeScript and ESLint conventions
+- Write comprehensive tests for new features
+- Update documentation for API changes
 - Add health checks for new external services
+- Ensure all CI/CD checks pass
+
+### Code Review Process
+
+- All changes require review by at least one maintainer
+- Automated tests must pass
+- Security review for authentication/authorization changes
+- Performance review for high-traffic endpoints
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for complete details.
 
-## 🆘 Support
+## 🔗 Links & Resources
 
-- **Documentation**: [API Docs](https://api.storylofts.com/api/docs)
-- **Health Status**: [https://api.storylofts.com/health](https://api.storylofts.com/health)
-- **Issues**: [GitHub Issues](https://github.com/nsr-compute/storylofts-backend/issues)
+- **🌐 Platform**: [StoryLofts](https://storylofts.com)
+- **📖 API Documentation**: [Interactive Docs](https://api.storylofts.com/api/docs)
+- **🏥 Health Dashboard**: [Live Status](https://api.storylofts.com/health)
+- **🐛 Bug Reports**: [GitHub Issues](https://github.com/nsr-compute/storylofts-backend/issues)
+- **💬 Discussions**: [GitHub Discussions](https://github.com/nsr-compute/storylofts-backend/discussions)
 
 ## 🎯 About StoryLofts
 
-StoryLofts is a premium video platform designed for professional creators and discerning viewers. Our mission is to provide elevated creative spaces where stories find their proper home - curated quality over algorithmic noise.
+StoryLofts is a premium video platform designed for professional creators and discerning viewers. Our mission is to provide elevated creative spaces where stories find their proper home - prioritizing curated quality over algorithmic noise.
 
-**Live Platform**: [https://storylofts.com](https://storylofts.com)
+Unlike mass-market platforms, StoryLofts focuses on:
+
+- **Quality over Quantity**: Curated content from verified professional creators
+- **Premium Experience**: Ad-free, distraction-free viewing environment
+- **Creator-Centric**: Fair monetization and comprehensive analytics
+- **Community**: Meaningful connections between creators and audiences
 
 ---
 
-<div align="center">
-
 **Built with ❤️ for the StoryLofts platform**
 
-[Website](https://storylofts.com) • [API](https://api.storylofts.com) • [Documentation](https://api.storylofts.com/api/docs)
-
-</div>
+*[Website](https://storylofts.com) • [API](https://api.storylofts.com) • [Documentation](https://api.storylofts.com/api/docs)*
